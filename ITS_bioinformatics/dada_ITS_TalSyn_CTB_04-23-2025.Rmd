@@ -1,0 +1,582 @@
+---
+title: "dada2_ITS_TalSyn_CTB"
+author: "Charles Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+### Setup
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/kuehnlab/AIMS_Talladega_synoptic/ITS_02.22.2025")
+```
+It loads the package before it begins or else it gets the error again
+
+```{r, library, message=FALSE}
+
+library(dada2)
+packageVersion("dada2")
+library(ShortRead)
+packageVersion("ShortRead")
+library(Biostrings)
+packageVersion("Biostrings")
+
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(pheatmap)
+library(GUniFrac)
+library(stringr)
+#library(metagMisc)
+#library(raster)
+#library(pals)
+#library(RColorBrewer)
+#library(ragg)
+library(ggpubr)
+```
+
+Going to drop some citations for key packages here: McMurdie PJ, Holmes S (2013). “phyloseq: An R package for reproducible interactive analysis and graphics of microbiome census data.” PLoS ONE, 8(4), e61217. http://dx.plos.org/10.1371/journal.pone.0061217. 
+
+
+
+
+Now the our libraries are loaded,
+## Set Theme
+Setting themes determines how our figures will look, readability and publishability. This can be modified later, but here is the starting point:
+```{r, theme, message=FALSE,  warning=FALSE}
+#Set theme
+theme_set(theme_bw() + theme(
+              plot.title = element_blank(),
+              axis.text.x = element_text(size=10, color="black"),
+              axis.text.y = element_text(size=10, color="black"),
+              axis.title.x = element_text(size=10),
+              axis.title.y = element_text(size=10),
+              legend.text = element_text(size=10),
+              legend.title = element_text(size=10),
+              legend.position = "bottom",
+              legend.key=element_blank(),
+              legend.key.size = unit(0.5, "cm"),
+              legend.spacing.x = unit(0.1, "cm"),
+              legend.spacing.y = unit(0.1, "cm"),
+              panel.background = element_blank(), 
+              panel.border = element_rect(colour = "black", fill=NA, size=1),
+              plot.background = element_blank()))
+```
+
+Now that our workspace is set up, time for the actual pipeline. 
+
+## DADA2 Amplicon Sequence Data Pipeline:
+Defining file path so R can find our raw fastq files. Make sure forward reads (R1) and reverse reads (R2) are in the same folder. This will need to be changed for different analyses.
+```{r, set path}
+path <- "/Users/kuehnlab/AIMS_Talladega_synoptic/ITS_02.22.2025/fastq"
+list.files(path)
+```
+Now that forward and reverse reads are loaded, we'll sort and name the samples.
+```{r}
+#Forward and reverse fastq filenames 
+fnFs <- sort(list.files(path, pattern="_L001_R1.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern="_L001_R2.fastq", full.names = TRUE))
+
+library(stringr)
+#Extract sample names
+sample.names <- sapply(strsplit(basename(fnFs), "_L001_R1"), `[`, 1)
+#sample.names <- sapply(strsplit(basename(fnFs), "_S"), `[`, 1)
+sample.names <- sapply(str_replace(sample.names, "XBOND_20250123_M01994_IL16566-", ""),`[`, 1)
+#sample.names <- sapply(paste0('kz.s_', sample.names),`[`, 1)
+sample.names
+
+```
+
+### Identify primers
+
+I am adding this step to ensure that primers have been properly removed 
+```{r}
+
+#BITS
+FWD <- "ACCTGCGGARGGATCA"  
+
+## B58S3
+REV <- "GAGATCCRTTGYTRAAAGTT" 
+
+allOrients <- function(primer) {
+    # Create all orientations of the input sequence
+    require(Biostrings)
+    dna <- DNAString(primer)  # The Biostrings works w/ DNAString objects rather than character vectors
+    orients <- c(Forward = dna, Complement = complement(dna), Reverse = reverse(dna), 
+        RevComp = reverseComplement(dna))
+    return(sapply(orients, toString))  # Convert back to character vector
+}
+FWD.orients <- allOrients(FWD)
+REV.orients <- allOrients(REV)
+FWD.orients
+
+
+###The presence of ambiguous bases (Ns) in the sequencing reads makes accurate mapping of short primer sequences difficult. Next we are going to “pre-filter” the sequences just to remove those with Ns, but perform no other filtering.
+fnFs.filtN <- file.path(path, "filtN", basename(fnFs)) 
+# Put N-filterd files in filtN/ subdirectory
+fnRs.filtN <- file.path(path, "filtN", basename(fnRs))
+filterAndTrim(fnFs, fnFs.filtN, fnRs, fnRs.filtN, maxN = 0, multithread = TRUE)
+
+```
+
+
+```{r}
+#We are now ready to count the number of times the primers appear in the forward and reverse read, while considering all possible primer orientations. Identifying and counting the primers on one set of paired end FASTQ files is sufficient, assuming all the files were created using the same library preparation, so we’ll just process the first sample.
+
+primerHits <- function(primer, fn) {
+    # Counts number of reads in which the primer is found
+    nhits <- vcountPattern(primer, sread(readFastq(fn)), fixed = FALSE)
+    return(sum(nhits > 0))
+}
+rbind(FWD.ForwardReads = sapply(FWD.orients, primerHits, fn = fnFs.filtN[[1]]), 
+    FWD.ReverseReads = sapply(FWD.orients, primerHits, fn = fnRs.filtN[[1]]), 
+    REV.ForwardReads = sapply(REV.orients, primerHits, fn = fnFs.filtN[[1]]), 
+    REV.ReverseReads = sapply(REV.orients, primerHits, fn = fnRs.filtN[[1]]))
+
+```
+  
+
+```{r}
+### locating cutadapt (we installed it along with qiime)
+cutadapt <- "/Users/kuehnlab/miniconda3/envs/qiime2-amplicon-2024.10/bin/cutadapt"
+
+system2(cutadapt, args = "--version") # Run shell commands from R
+
+```
+
+
+NOTE: -m 45 == minimum length of 45, because my I'd like to go ahead and drop those itty bitty reads altogether. 
+```{r, echo=FALSE}
+path.cut <- file.path(path, "cutadapt")
+if(!dir.exists(path.cut)) dir.create(path.cut)
+fnFs.cut <- file.path(path.cut, basename(fnFs))
+fnRs.cut <- file.path(path.cut, basename(fnRs))
+
+FWD.RC <- dada2:::rc(FWD)
+REV.RC <- dada2:::rc(REV)
+# Trim FWD and the reverse-complement of REV off of R1 (forward reads)
+R1.flags <- paste("-g", FWD, "-a", REV.RC) 
+# Trim REV and the reverse-complement of FWD off of R2 (reverse reads)
+R2.flags <- paste("-G", REV, "-A", FWD.RC) 
+# Run Cutadapt
+
+### Note, Charlie initially added argument "-m 1" below to remove remnant reads of length zero. Now attempting with min length more stringent min length, something just below downstream minimum length, e.g. 45 is below downstream length of 50...
+
+for(i in seq_along(fnFs)) {
+  system2(cutadapt, args = c(R1.flags, R2.flags, "-m", 45, "-n", 2, # -n 2 required to remove FWD and REV from reads
+                            "--quiet", "-o", fnFs.cut[i], "-p", fnRs.cut[i], # output files
+                             fnFs.filtN[i], fnRs.filtN[i])) # input files
+}
+
+```
+
+
+###Charlie note:
+The output gives a warning to check the adapter sequences:
+`WARNING:`
+   ` The adapter is preceded by 'A' extremely often.`
+    `The provided adapter sequence could be incomplete at its 5' end.`
+    `Ignore this warning when trimming primers.`
+    
+HOWEVER, we can `Ignore this warning`   , because we're `trimming primers.`
+Adapters are on the outside of the primers, so by trimming primers, we are without a doubt also trimming off adapters. So just ignore the warning, we're good. 
+
+
+#Sanity check, did it work?
+
+```{r}
+rbind(FWD.ForwardReads = sapply(FWD.orients, primerHits, fn = fnFs.cut[[1]]), 
+    FWD.ReverseReads = sapply(FWD.orients, primerHits, fn = fnRs.cut[[1]]), 
+    REV.ForwardReads = sapply(REV.orients, primerHits, fn = fnFs.cut[[1]]), 
+    REV.ReverseReads = sapply(REV.orients, primerHits, fn = fnRs.cut[[1]]))
+
+```
+Yay, code works:
+                  Forward Complement Reverse RevComp
+FWD.ForwardReads       0          0       0       0
+FWD.ReverseReads       0          0       0       0
+REV.ForwardReads       0          0       0       0
+REV.ReverseReads       0          0       0       0
+
+
+Now that forward and reverse reads are loaded, we'll sort and name the samples.
+```{r}
+#Forward and reverse fastq filenames 
+#cutFs <- sort(list.files(path, pattern="_R1.fastq", full.names = TRUE))
+#cutRs <- sort(list.files(path, pattern="_R2.fastq", full.names = TRUE))
+
+# Forward and reverse fastq filenames have the format:
+cutFs <- sort(list.files(path.cut, pattern = "_R1.fastq", full.names = TRUE))
+cutRs <- sort(list.files(path.cut, pattern = "_R2.fastq", full.names = TRUE))
+
+library(stringr)
+#extract sample names
+sample.names <- sapply(strsplit(basename(fnFs), "_L001_R1"), `[`, 1)
+#sample.names <- sapply(strsplit(basename(fnFs), "_S"), `[`, 1)
+sample.names <- sapply(str_replace(sample.names, "XBOND_20250123_M01994_IL16566-", ""),`[`, 1)
+sample.names <- sapply(str_replace_all(sample.names, "-", "_"),`[`, 1)
+sample.names
+names(cutFs) <- sample.names
+names(cutRs) <- sample.names
+```
+
+do this next time
+```{}
+label_codex <- read.csv("~/Desktop/CTB/Chapter_II/dada2_ITS_TalSyn_CTB/label_codex.csv")
+
+sample.names<- str_replace_all(sample.names, label_codex$barpair, label_codex$Library.Name)
+sample.names<- str_replace_all(sample.names, "_TL", "_:TL")
+sample.names<- str_replace_all(sample.names, "neg", ":neg")
+
+sample.names <- sapply(strsplit(basename(sample.names), ":"), `[`, 2)
+sample.names
+names(cutFs) <- sample.names
+names(cutRs) <- sample.names
+
+```
+## Inspect and Filter Sequence Quality
+
+```{r}
+#Inspect read quality profiles for forward reads
+plotQualityProfile(cutFs[c(6,35,67,98,122,159)])
+```
+
+```{r}
+#Inspect read quality profiles for reverse reads
+plotQualityProfile(cutRs[c(6,35,67,98,122,159)])
+```
+
+
+Setting file paths for the samples we're about to trim:
+```{r}
+#Filter and Trim
+filtFs <- file.path(path.cut, "filtered", basename(cutFs))
+filtRs <- file.path(path.cut, "filtered", basename(cutRs))
+
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+
+```
+
+and now for the trimming, note that I set multi-thread to TRUE because I am on a Mac. You'll have to set that to FALSE if you're on a PC. The default expected error (maxEE) is 2, but I've relaxed them here to reflect our lower quality reads.
+
+```{r}
+##Trim trim trim!!
+#Filter reads where both sets maintain a quality score ~30+ (error rate 1 in 1,000)
+## Mac can multi-threat this, windows cannot ##
+out <- filterAndTrim(cutFs, filtFs, cutRs, filtRs, 
+                     #truncLen=c(220,120),minLen=50, 
+                     maxN=0, maxEE=c(3,5), truncQ=2, rm.phix=TRUE,
+                     compress=TRUE, multithread=TRUE) 
+out
+```
+
+Now to inspect our filtered sequences:
+```{r}
+#Re-inspect read quality profiles
+plotQualityProfile(filtFs[c(6,35,67,98,122,159)])
+```
+
+```{r}
+#Re-inspect read quality profiles
+plotQualityProfile(filtRs[c(6,35,67,98,122,159)])
+```
+
+
+## Generate an Error Model
+The machine learning algorithm `learnErrors` will generate a parametric error model for the filtered sequence data. 
+
+```{r}
+#Learn error rates
+#!!~30 min each!!
+errF <- learnErrors(filtFs, multithread=TRUE)
+```
+
+```{r}
+#Learn error rates
+#!!~30 min each!!
+errR <- learnErrors(filtRs, multithread=TRUE)
+```
+
+Plotting errors
+```{r}
+#plot error forward
+plotErrors(errF, nominalQ=TRUE)
+```
+
+```{r}
+#plot error reverse
+plotErrors(errR, nominalQ=TRUE)
+```
+
+#Dereplication
+```{r, message=FALSE}
+#Dereplication
+derep_forward <- derepFastq(filtFs, verbose=TRUE)
+derep_reverse <- derepFastq(filtRs, verbose=TRUE)
+names(derep_forward) <- sample.names
+names(derep_reverse) <- sample.names
+```
+
+##Infer ASVs
+```{r, message=FALSE}
+#Inferring ASVs
+#Pool or pseudopool if particularly interested in rare taxa (e.g. singletons)
+
+dadaFs <- dada(derep_forward, err=errF, pool="pseudo", multithread=TRUE)
+
+dadaRs <- dada(derep_reverse, err=errR, pool="pseudo", multithread=TRUE)
+
+dadaFs[[1]]
+
+
+```
+
+
+
+#MERGE F and R
+NOW WE WILL MERGE F AND R
+```{r, message=FALSE}
+
+#Merge forward and reverse reads (make contigs)
+mergers <- mergePairs(dadaFs, derep_forward, dadaRs, derep_reverse, 
+                      #trimOverhang=TRUE, minOverlap=45, 
+                      verbose=TRUE)
+```
+
+Now construct a count table for our newly merged ASVs. 
+
+##Construct a Count Table
+```{r}
+#Construct ASV table
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+
+```
+
+
+```{r}
+table(nchar(getSequences(seqtab))) 
+
+```
+
+Our amplicons are naturally variable in size, so we will retain a wide range.
+```{r}
+seqtab <- seqtab[,nchar(colnames(seqtab)) %in% 74:430]
+table(nchar(getSequences(seqtab)))
+
+dim(seqtab)
+```
+
+
+##Remove Chimeras
+```{r}
+#Remove chimeras
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+## Identified 83 bimeras out of 2858 input sequences.
+(sum(seqtab.nochim)/sum(seqtab)) 
+
+(1-(sum(seqtab.nochim)/sum(seqtab)))
+
+
+```
+
+
+## Track Number of Reads Retained Through Pipeline
+```{r}
+#Count reads dropped through each step in the pipeline
+getN <- function(x) sum(getUniques(x))
+track <- data.frame(row.names=sample.names, dada2_input=out[,1],
+                    filtered=out[,2], dada_f=sapply(dadaFs, getN),
+                    dada_r=sapply(dadaRs, getN), merged=sapply(mergers, getN),
+                    nonchim=rowSums(seqtab.nochim),
+                    final_perc_reads_retained=round(rowSums(seqtab.nochim)/out[,1]*100, 1))
+#View(track)
+mean(track[,7])
+min(track[,7])
+
+### change file name with new run-throughs!!
+#write.csv(track, "/Users/kuehnlab/Desktop/CTB/Chapter_II/dada2_ITS_TalSyn_CTB/dada2_ITS_read_tracking11-13-2024.csv")
+write.csv(track, "/Users/kuehnlab/AIMS_Talladega_synoptic/ITS_02.22.2025/dada2_ITS_read_tracking02-22-2025.csv")
+
+```
+
+
+## Classify ASV Taxonomy
+We are using a combination of taxonomy assignment functions to provide alternatives to the handful of spurious classification provided by the otherwise accurate naive Bayesian approach of the dada2 assignTaxonomy() function. Using the ensembleTex package, we'll merge the outputs 
+
+Using current UNITE general release for all eukaryotes:
+9.0 	2022-10-16 	All eukaryotes 	17 683 	308 588 	Current 	https://doi.org/10.15156/BIO/2483914
+When using this resource, please cite it as follows:
+Abarenkov, Kessy; Zirk, Allan; Piirmann, Timo; Pöhönen, Raivo; Ivanov, Filipp; Nilsson, R. Henrik; Kõljalg, Urmas (2022): UNITE general FASTA release for eukaryotes 2. Version 16.10.2022. UNITE Community. https://doi.org/10.15156/BIO/2483914
+
+Includes global and 3% distance singletons. 
+
+overnight!!!
+```{r}
+###
+#Set Working Directory
+setwd('/Users/kuehnlab/AIMS_Talladega_synoptic/ITS_02.22.2025')
+#Classify ASVs
+#!!~20 min each!!
+tax_info <- assignTaxonomy(seqtab.nochim, "sh_general_release_dynamic_s_all_25.07.2023.fasta", 
+                           multithread=TRUE, tryRC=TRUE)
+
+taxa.print <- tax_info
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+
+#Generate FASTA file
+asv_seqs <- colnames(seqtab.nochim)
+asv_headers <- vector(dim(seqtab.nochim)[2], mode="character")
+for (i in 1:dim(seqtab.nochim)[2]) {
+  asv_headers[i] <- paste(">ASV", i, sep="_")
+}
+asv_fasta <- c(rbind(asv_headers, asv_seqs))
+write(asv_fasta, "dada2fasta04.24.2025.fasta")
+
+#Generate ASV table (.count_table file)
+asv_tab <- t(seqtab.nochim)
+row.names(asv_tab) <- sub(">", "", asv_headers)
+write.table(t(asv_tab), "practice04.24.2025.count_table", sep="\t", quote=F, col.names=NA)
+
+#Generate taxonomy table
+rownames(tax_info) <- gsub(pattern=">", replacement="", x=asv_headers)
+write.csv(tax_info, "dada2_taxonomy04.24.2025.csv")
+
+```
+
+
+```{r}
+### Chunk 3
+
+library("Biostrings")
+library(dplyr)
+library(stringr)
+library(usethis)
+library(DECIPHER); packageVersion("DECIPHER")
+
+## [1] '2.14.0'
+
+# read our sample fastas into DECIPHER format
+fas <- "dada2fasta04.24.2025.fasta"
+idseqs <- readDNAStringSet(fas) 
+
+
+load("TrainingSet_UNITE_decipher_04.23.2025.RData") # CHANGE TO THE PATH OF YOUR TRAINING SET
+ids <- IdTaxa(idseqs, trainingSet, strand="both", threshold=50, processors=NULL, verbose=FALSE) # use all processors
+
+### The rank labels got messed up somehow, finding a workaround.....
+ testtt<- sapply(ids,"[[",1)
+ 
+ taxmatx<-stringi::stri_list2matrix(testtt, byrow=TRUE)
+
+ ranks <- c("root","kingdom", "phylum", "class", "order", "family", "genus", "species") 
+colnames(taxmatx)<-ranks
+taxid_df<- as.data.frame(taxmatx[1:nrow(as.data.frame(idseqs)),2:8])
+row.names(taxid_df)<- names(idseqs)
+head(taxid_df)
+
+library(stringr)
+library(dplyr)
+#library(magrittr)
+
+idtax_table_commonizing<- taxid_df 
+is.na(idtax_table_commonizing$kingdom) <- startsWith(idtax_table_commonizing$kingdom, "unclassified_")
+is.na(idtax_table_commonizing$phylum) <- startsWith(idtax_table_commonizing$phylum, "unclassified_")
+is.na(idtax_table_commonizing$class) <- startsWith(idtax_table_commonizing$class, "unclassified_")
+is.na(idtax_table_commonizing$order) <- startsWith(idtax_table_commonizing$order, "unclassified_")
+is.na(idtax_table_commonizing$family) <- startsWith(idtax_table_commonizing$family, "unclassified_")
+is.na(idtax_table_commonizing$genus) <- startsWith(idtax_table_commonizing$genus, "unclassified_")
+is.na(idtax_table_commonizing$species) <- startsWith(idtax_table_commonizing$species, "unclassified_")
+is.na(idtax_table_commonizing$species) <- endsWith(idtax_table_commonizing$species, "_sp")
+
+#DECIPHER idtaxa uses redundant labeling, putting "s__Genus_species" in the species rank. We want to remove the "Genus" from the middle of this string to make it interoperable with the Bayesian taxonomy from dada2. 
+
+idtax_table_commonizing$species<- str_replace(idtax_table_commonizing$species, pattern = "__\\w+\\_", replacement = "__")
+
+write.csv(idtax_table_commonizing, "idtax_tab_04.24.2025.csv")
+
+```
+
+```{r}
+cured_bayes_tax<- as.data.frame(tax_info)
+colnames(idtax_table_commonizing)<-colnames(tax_info)
+
+rows_to_replace<- cured_bayes_tax$Kingdom=='k__Metazoa' | cured_bayes_tax$Kingdom=='k__Viridiplantae'
+
+idtemp<-idtax_table_commonizing
+
+# Loop over the rows to perform replacement
+for(i in which(rows_to_replace)) {
+  cured_bayes_tax[i, ] <- idtemp[i, ]
+}
+
+```
+
+
+```{r}
+library(tibble)
+taxidf <- tibble::as_data_frame(idtemp)
+row.names(taxidf) <- row.names(idtemp)
+taxidf <- tibble::rownames_to_column(idtemp, "ASV")
+
+bayesdf <- tibble::as_data_frame(cured_bayes_tax)
+row.names(bayesdf) <- row.names(cured_bayes_tax)
+bayesdf <- tibble::rownames_to_column(cured_bayes_tax, "ASV")
+
+library(tidyverse)
+taxidf <- as.data.frame(taxidf)
+bayesdf<- as.data.frame(bayesdf)
+colnames(taxidf)<-colnames(bayesdf)
+
+library(ensembleTax)
+
+xx <- list(taxidf, bayesdf)
+names(xx) <- c("idtax", "bayes")
+eTax1 <- assign.ensembleTax(xx, 
+                     tablenames = names(xx), 
+                     ranknames = colnames(taxidf)[2:ncol(taxidf)],
+                     weights=rep(1,length(xx)), 
+                   #  ranknames = c("kingdom","phylum","class","order","family","genus","species"),
+                #     tiebreakz = c("bayes"), 
+                    tiebreakz = c("bayes"),
+                     count.na=FALSE, 
+                     assign.threshold = 0
+                     )
+
+lapply(xx, FUN = head)
+
+```
+
+```{r}
+#Set Working Directory
+setwd('/Users/kuehnlab/AIMS_Talladega_synoptic/ITS_02.22.2025')
+
+head(eTax1)
+write.csv(eTax1, "ensembleTax_tab_TALsyn_04.24.2025.csv")
+```
+
+Now create a version of fungi-only taxonomy and another for all eukaryotes identified to the Kindgom-level or lower.
+```{r, warning=FALSE}
+row.names(eTax1)<-eTax1$ASV
+eTax1<- eTax1[,2:8]
+
+#Set Working Directory
+setwd('/Users/kuehnlab/AIMS_Talladega_synoptic/ITS_02.22.2025')
+
+fungitax<- filter(eTax1, Kingdom=='k__Fungi')
+
+write.csv(fungitax, "final_fungi_tax_tab_TALsyn_04.24.2025.csv")
+
+full_euktax<- filter(eTax1, !is.na(Kingdom))
+
+write.csv(full_euktax, "final_eukaryote_tax_tab_TALsyn_04.24.2025.csv")
+
+```
+
+#THIS IS DONE. With the outputs generated, you can move on to data analysis, which I will conduct in a seperate .RMD file. 
