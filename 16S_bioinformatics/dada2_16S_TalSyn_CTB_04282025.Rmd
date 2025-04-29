@@ -1,0 +1,473 @@
+---
+title: "Talladega_synoptic_16S_dada2_CTB"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+### Setup
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/kuehnlab/AIMS_Talladega_synoptic/16S/dada2_16S_TalSyn_CTB")
+```
+It loads the package before begin or else it gets the error again
+
+
+
+```{r, library}
+
+library(dada2)
+packageVersion("dada2")
+library(ShortRead)
+packageVersion("ShortRead")
+library(Biostrings)
+packageVersion("Biostrings")
+
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(pheatmap)
+library(GUniFrac)
+#library(metagMisc)
+#library(raster)
+#library(pals)
+#library(RColorBrewer)
+#library(ragg)
+library(ggpubr)
+```
+
+
+## Set Theme
+Setting themes to improve readability of figures
+```{r, theme}
+#Set theme
+theme_set(theme_bw() + theme(
+              plot.title = element_blank(),
+              axis.text.x = element_text(size=10, color="black"),
+              axis.text.y = element_text(size=10, color="black"),
+              axis.title.x = element_text(size=10),
+              axis.title.y = element_text(size=10),
+              legend.text = element_text(size=10),
+              legend.title = element_text(size=10),
+              legend.position = "bottom",
+              legend.key=element_blank(),
+              legend.key.size = unit(0.5, "cm"),
+              legend.spacing.x = unit(0.1, "cm"),
+              legend.spacing.y = unit(0.1, "cm"),
+              panel.background = element_blank(), 
+              panel.border = element_rect(colour = "black", fill=NA, size=1),
+              plot.background = element_blank()))
+```
+
+Now that our workspace is set up, time for the actual pipeline. 
+
+## DADA2 Amplicon Sequence Data Pipeline:
+Defining file path so R can find our raw fastq files. Make sure forward reads (R1) and reverse reads (R2) are in the same folder. This will need to be changed for different analyses.
+```{r, set path}
+path <- "/Users/kuehnlab/AIMS_Talladega_synoptic/16S/dada2_16S_TalSyn_CTB/fastq_16S_TalSyn"
+list.files(path)
+```
+
+Now that forward and reverse reads are loaded, we'll sort and name the samples.
+```{r}
+#Forward and reverse fastq filenames 
+fnFs <- sort(list.files(path, pattern="_R1_001.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern="_R2_001.fastq", full.names = TRUE))
+
+library(stringr)
+#Extract sample names
+sample.names <- sapply(strsplit(basename(fnFs), "_L001_R1_001"), `[`, 1)
+#sample.names <- sapply(strsplit(basename(fnFs), "_S"), `[`, 1)
+sample.names <- sapply(str_replace(sample.names, "redo2_", ""),`[`, 1)
+sample.names <- sapply(str_replace(sample.names, "redo_", ""),`[`, 1)
+sample.names <- sapply(str_replace(sample.names, "REDO_", ""),`[`, 1)
+sample.names <- sapply(str_replace(sample.names, "_BP", "BP"),`[`, 1)
+sample.names <- sapply(strtrim(sample.names,11),`[`, 1)
+#sample.names <- sapply(paste0('kz.s_', sample.names),`[`, 1)
+sample.names
+sample.names<-as.vector(sample.names)
+sample.names
+
+```
+
+
+### Trim primers
+I am adding this step to ensure that primers have been properly removed 
+```{r}
+##16S Earth Microbiome project Primers
+
+#515F
+FWD <- "GTGYCAGCMGCCGCGGTAA"  
+
+## 806R
+REV <- "GGACTACNVGGGTWTCTAAT" 
+
+allOrients <- function(primer) {
+    # Create all orientations of the input sequence
+    require(Biostrings)
+    dna <- DNAString(primer)  # The Biostrings works w/ DNAString objects rather than character vectors
+    orients <- c(Forward = dna, Complement = complement(dna), Reverse = reverse(dna), 
+        RevComp = reverseComplement(dna))
+    return(sapply(orients, toString))  # Convert back to character vector
+}
+FWD.orients <- allOrients(FWD)
+REV.orients <- allOrients(REV)
+FWD.orients
+
+
+###The presence of ambiguous bases (Ns) in the sequencing reads makes accurate mapping of short primer sequences difficult. Next we are going to “pre-filter” the sequences just to remove those with Ns, but perform no other filtering.
+fnFs.filtN <- file.path(path, "filtN", basename(fnFs)) 
+# Put N-filterd files in filtN/ subdirectory
+fnRs.filtN <- file.path(path, "filtN", basename(fnRs))
+filterAndTrim(fnFs, fnFs.filtN, fnRs, fnRs.filtN, maxN = 0, multithread = TRUE)
+
+```
+
+
+```{r}
+#We are now ready to count the number of times the primers appear in the forward and reverse read, while considering all possible primer orientations. Identifying and counting the primers on one set of paired end FASTQ files is sufficient, assuming all the files were created using the same library preparation, so we’ll just process the first sample.
+
+primerHits <- function(primer, fn) {
+    # Counts number of reads in which the primer is found
+    nhits <- vcountPattern(primer, sread(readFastq(fn)), fixed = FALSE)
+    return(sum(nhits > 0))
+}
+rbind(FWD.ForwardReads = sapply(FWD.orients, primerHits, fn = fnFs.filtN[[1]]), 
+    FWD.ReverseReads = sapply(FWD.orients, primerHits, fn = fnRs.filtN[[1]]), 
+    REV.ForwardReads = sapply(REV.orients, primerHits, fn = fnFs.filtN[[1]]), 
+    REV.ReverseReads = sapply(REV.orients, primerHits, fn = fnRs.filtN[[1]]))
+
+```
+Output:
+                 Forward Complement Reverse RevComp
+FWD.ForwardReads       1          0       0       0
+FWD.ReverseReads       0          0       0    1578
+REV.ForwardReads       0          0       0    1843
+REV.ReverseReads       0          0       0       0
+
+
+```{r}
+#cutadapt <- "/Users/kuehnlab/opt/anaconda3/envs/cutadaptenv/bin/cutadapt" # CHANGE ME to the cutadapt path on your machine
+cutadapt <- "/Users/kuehnlab/miniconda3/envs/qiime2-amplicon-2024.10/bin/cutadapt"
+#cutadapt <- "/Users/kuehnlab/miniconda3/envs/qiime2-2022.11/bin/cutadapt"
+
+system2(cutadapt, args = "--version") # Run shell commands from R
+
+```
+
+
+NOTE: -m 45 == minimum length of 45, because my I'd like to go ahead and drop those itty bitty reads altogether. 
+```{r}
+path.cut <- file.path(path, "cutadapt")
+if(!dir.exists(path.cut)) dir.create(path.cut)
+fnFs.cut <- file.path(path.cut, basename(fnFs))
+fnRs.cut <- file.path(path.cut, basename(fnRs))
+
+FWD.RC <- dada2:::rc(FWD)
+REV.RC <- dada2:::rc(REV)
+# Trim FWD and the reverse-complement of REV off of R1 (forward reads)
+R1.flags <- paste("-g", FWD, "-a", REV.RC) 
+# Trim REV and the reverse-complement of FWD off of R2 (reverse reads)
+R2.flags <- paste("-G", REV, "-A", FWD.RC) 
+# Run Cutadapt
+
+### Note, Charlie initially added argument "-m 1" below to remove remnant reads of length zero. Now attempting with min length more stringent min length, something just below downstream minimum length, e.g. 45 is below downstream length of 50...
+
+for(i in seq_along(fnFs)) {
+  system2(cutadapt, args = c(R1.flags, R2.flags, "-m", 45, "-n", 2, # -n 2 required to remove FWD and REV from reads
+                             "-o", fnFs.cut[i], "-p", fnRs.cut[i], # output files
+                             fnFs.filtN[i], fnRs.filtN[i])) # input files
+}
+
+```
+
+
+###note:
+The output gives a warning to check the adapter sequences:
+`WARNING:`
+   ` The adapter is preceded by 'A' extremely often.`
+    `The provided adapter sequence could be incomplete at its 5' end.`
+    `Ignore this warning when trimming primers.`
+    
+HOWEVER, we can `Ignore this warning`   , because we're `trimming primers.`
+Adapters are on the outside of the primers, so by trimming primers, we are without a doubt also trimming off adapters. So just ignore the warning, we're good. 
+
+
+#Sanity check, did it work?
+
+```{r}
+rbind(FWD.ForwardReads = sapply(FWD.orients, primerHits, fn = fnFs.cut[[1]]), 
+    FWD.ReverseReads = sapply(FWD.orients, primerHits, fn = fnRs.cut[[1]]), 
+    REV.ForwardReads = sapply(REV.orients, primerHits, fn = fnFs.cut[[1]]), 
+    REV.ReverseReads = sapply(REV.orients, primerHits, fn = fnRs.cut[[1]]))
+
+```
+Should look like this:
+                 Forward Complement Reverse RevComp
+FWD.ForwardReads       0          0       0       0
+FWD.ReverseReads       0          0       0       0
+REV.ForwardReads       0          0       0       0
+REV.ReverseReads       0          0       0       0
+
+YAYA
+
+
+```{r}
+# Forward and reverse fastq filenames have the format:
+cutFs <- sort(list.files(path.cut, pattern = "_R1_001.fastq", full.names = TRUE))
+cutRs <- sort(list.files(path.cut, pattern = "_R2_001.fastq", full.names = TRUE))
+
+# Extract sample names, assuming filenames have format:
+#get.sample.name <- function(fname) strsplit(basename(fname), "_")[[1]][1]
+#sample.names <- unname(sapply(cutFs, get.sample.name))
+#head(sample.names)
+
+library(stringr)
+#Extract sample names
+library(stringr)
+#Extract sample names
+sample.names <- sapply(strsplit(basename(cutFs), "_L001_R1_001"), `[`, 1)
+#sample.names <- sapply(strsplit(basename(fnFs), "_S"), `[`, 1)
+sample.names <- sapply(str_replace(sample.names, "redo2_", ""),`[`, 1)
+sample.names <- sapply(str_replace(sample.names, "redo_", ""),`[`, 1)
+sample.names <- sapply(str_replace(sample.names, "REDO_", ""),`[`, 1)
+sample.names <- sapply(str_replace(sample.names, "_BP", "BP"),`[`, 1)
+sample.names <- sapply(strtrim(sample.names,11),`[`, 1)
+#sample.names <- sapply(paste0('kz.s_', sample.names),`[`, 1)
+sample.names
+sample.names<-as.vector(sample.names)
+sample.names
+
+```
+
+
+## Inspect and Filter Sequence Quality
+
+```{r}
+#Inspect read quality profiles for forward reads
+plotQualityProfile(cutFs[c(6,12,36,62,84,120)])
+```
+
+```{r}
+#Inspect read quality profiles for reverse reads
+plotQualityProfile(cutRs[c(6,12,36,62,84,120)])
+```
+
+
+Setting file paths for the samples we're about to trim:
+```{r}
+#Filter and Trim
+filtFs <- file.path(path.cut, "filtered", basename(cutFs))
+filtRs <- file.path(path.cut, "filtered", basename(cutRs))
+
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+
+```
+
+and now for the trimming, note that I set multi-thread to TRUE because I am on a Mac. You'll have to set that to FALSE if you're on a PC. The default expected error (maxEE) is 2, and the data looks good so will not relax that. 
+For truncating length, after trimming primers+adaptors etc from the ~390 bp amplicons, our merged reads should ideally be ~253-254 bp. This should give us nearly complete overlap for many reads, but for shorter reads, with an overlap minimum of 18 bp, we should be able to make mergers for reads where forward or reverse are about 148. It looks like we have very few reads that will be even that short, but I will set minLen to 120 to be conservative. 
+```{r}
+##Trim trim trim!!
+#Filter reads where both sets maintain a quality score ~30+ (error rate 1 in 1,000)
+## Mac can multi-threat this, windows cannot ##
+out <- filterAndTrim(cutFs, filtFs, cutRs, filtRs, 
+                     truncLen=c(240,230),minLen=120, 
+                     maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+                     compress=TRUE, multithread=TRUE) 
+out
+```
+
+## Inspect and Filter Sequence Quality
+Now we visualize the filtered reads just to look at how pretty and clean our data is. 
+```{r}
+#Inspect read quality profiles for forward reads
+plotQualityProfile(filtFs[c(6,12,36,62,84,120)])
+```
+
+```{r}
+#Inspect read quality profiles for reverse reads
+plotQualityProfile(filtRs[c(6,12,36,62,84,120)])
+```
+
+
+## Generate an Error Model
+Buckle up, Chuck, this here **Machine Learning Algorithm** `learnErrors` will generate a parametric error model for the filtered sequence data. 
+```{r}
+#Learn error rates
+#!!~30 min each!!
+errF <- learnErrors(filtFs, multithread=TRUE)
+
+#Learn error rates
+#!!~30 min each!!
+errR <- learnErrors(filtRs, multithread=TRUE)
+
+#plot error forward
+plotErrors(errF, nominalQ=TRUE)
+
+#plot error reverse
+plotErrors(errR, nominalQ=TRUE)
+```
+
+#Dereplication
+Dereplications means the computer only needs to analyse each identical sequence once, lumping anlyses and saving brain cells. 
+
+```{r}
+#Dereplication
+derep_forward <- derepFastq(filtFs, verbose=TRUE)
+derep_reverse <- derepFastq(filtRs, verbose=TRUE)
+names(derep_forward) <- sample.names
+names(derep_reverse) <- sample.names
+```
+
+##Infer ASVs
+dada() function is the core algorithm of DADA2. It looks at the abundances of unique/exact sequences to estimate which ones are real and which ones are PCR or sequencing errors. For the pool command, FALSE sacrifices rare taxa because it analyses each sample separately, thereby removing taxa which appear across samples but are rare in a given sample. This is for low RAM computers with <16GB RAM. We have an absurd amount for RAM (4x 32 GB modules for 128 GB total RAM), but setting pool to TRUE still gives us spinning wheel of death, too big a dataset. The option "pseudo" allows for pseudo-pooling, giving a similar effect as pooling but in a more efficient manner, as per this explanation: https://benjjneb.github.io/dada2/pseudo.html
+
+```{r}
+#Inferring ASVs
+#Pool or pseudopool if particularly interested in rare taxa (e.g. singletons)
+
+dadaFs <- dada(derep_forward, err=errF, pool="pseudo", multithread=TRUE)
+
+dadaRs <- dada(derep_reverse, err=errR, pool="pseudo", multithread=TRUE)
+
+dadaFs[[1]]
+
+
+```
+
+
+NOW WE WILL MERGE
+#MERGE F and R
+
+```{r}
+
+#Merge forward and reverse reads (make contigs)
+
+mergers <- mergePairs(dadaFs, derep_forward, dadaRs, derep_reverse, 
+                      #trimOverhang=TRUE, minOverlap=45, 
+                      verbose=TRUE)
+## Note: new ITS DADA2 tutorial using our primers does not suggest trimming overhang or using a minOverlap greater than default of 12. This should result in retaining more reads, and we'll rely on chimera detection to detect spurious mergers. ... 
+
+```
+
+Now construct a count table for our newly merged ASVs. 
+
+##Construct a Count Table
+```{r}
+
+#Construct ASV table
+seqtab <- makeSequenceTable(mergers)
+dim(seqtab)
+
+```
+Run July 29th 2024: 178 sampeles, 150962 ASVs. 
+
+```{r}
+table(nchar(getSequences(seqtab))) 
+
+```
+
+ASVs that are much longer or shorter than 253-254 may be artifacts of non-specific priming. Note it is a very small percentage outside that range. 
+
+```{r}
+seqtab <- seqtab[,nchar(colnames(seqtab)) %in% 250:257]
+table(nchar(getSequences(seqtab)))
+
+dim(seqtab)
+```
+#### review
+13660 ASVs
+
+
+
+##Remove Chimeras
+
+```{r}
+#Remove chimeras
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+## Identified 83 bimeras out of 2858 input sequences.
+(sum(seqtab.nochim)/sum(seqtab)) 
+
+(1-(sum(seqtab.nochim)/sum(seqtab)))
+
+
+### 1216R April ITS run for reference
+#Identified 96 bimeras out of 13660 input sequences.
+#[1] 0.9962817
+#[1] 0.003718295
+
+```
+Identified 4242 bimeras out of 146824 input sequences.
+July 30 2024 16S run:
+[1] 0.9919082
+[1] 0.008091835
+
+0.809% chimera rate
+
+## Track Number of Reads Retained Through Pipeline
+```{r}
+#Count reads dropped through each step in the pipeline
+getN <- function(x) sum(getUniques(x))
+track <- data.frame(row.names=sample.names, dada2_input=out[,1],
+                    filtered=out[,2], dada_f=sapply(dadaFs, getN),
+                    dada_r=sapply(dadaRs, getN), merged=sapply(mergers, getN),
+                    nonchim=rowSums(seqtab.nochim),
+                    final_perc_reads_retained=round(rowSums(seqtab.nochim)/out[,1]*100, 1))
+track
+mean(track[,7])
+min(track[,7])
+min(track[,6])
+
+### change file name with new run-throughs!!
+write.csv(track, "/Users/kuehnlab/AIMS_Talladega_synoptic/16S/dada2_16S_TalSyn_CTB/fin_read_track_16S_TalSyn_07302024.csv")
+
+```
+Mean read retention of 68%, smallest sample is 35448. 
+
+
+## Classify ASVs and generate final tables
+
+overnight!!!
+```{r}
+#Classify ASVs
+tax_info <- assignTaxonomy(seqtab.nochim, "silva_nr99_v138.2_toGenus_trainset.fa", 
+                           multithread=TRUE, tryRC=TRUE)
+taxa.print <- tax_info
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+###
+#Set Working Directory
+
+#Generate FASTA file
+asv_seqs <- colnames(seqtab.nochim)
+asv_headers <- vector(dim(seqtab.nochim)[2], mode="character")
+for (i in 1:dim(seqtab.nochim)[2]) {
+  asv_headers[i] <- paste(">ASV", i, sep="_")
+}
+asv_fasta <- c(rbind(asv_headers, asv_seqs))
+write(asv_fasta, "TalSyn_16S_dada2_ASVs_04.25.2025.fasta")
+
+#Generate ASV table (.count_table file)
+asv_tab <- t(seqtab.nochim)
+row.names(asv_tab) <- sub(">", "", asv_headers)
+write.table(t(asv_tab), "TalSyn_16S_dada2_ASVs_04.25.2025.count_table", sep="\t", quote=F, col.names=NA)
+
+#Generate taxonomy table
+rownames(tax_info) <- gsub(pattern=">", replacement="", x=asv_headers)
+write.csv(tax_info, "TalSyn_16S_dada2_ASV_taxonomy_04.25.2025.csv")
+```
+
+
+count table as tsv for PICRUST2
+```{r}
+asvtab <- read.table("/Users/kuehnlab/AIMS_Talladega_synoptic/16S/dada2_16S_TalSyn_CTB/TalSyn_16S_dada2_ASVs_04.25.2025.count_table", header=T, row.names=1, check.names=F, sep="\t")
+asvtab<- as.data.frame(t(asvtab))
+asvtab <- tibble::rownames_to_column(asvtab, "ASV_ID")
+library(readr)
+write_tsv(asvtab,"TalSyn_16S_dada2_ASV_counts_04.25.2025.tsv")
+```
