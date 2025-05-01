@@ -24,15 +24,18 @@ Where needed, references are provided in-line with code for data sources that mu
 
 
 # Bioinformatics and Analysis Pipelines
-This project is composed of two main components:
-1) The bioinformatics pipelines for 16S and ITS (amplicon sequence processing via dada2).
-   and
-2) Data analysis (statistical tests and figure generation).
+This project is composed of three main components:
+1) Metadata preparation
+   - Combining various metadata for downstream analyses (i.e., hydrographic, network, and biogeochemistry data from sites).
+   - Map preparation, making the map of sites along the network.
+2) Bioinformatics pipelines
+   - dada2 pipelines for 16S V4 (prokaryotes) and ITS (fungi) to generate ASV counts and taxonomy
+   - picrust2 for functional gene estimation for 16S data
+   - DECIPHER classifier training to help improve taxonomy assignment for fungi.
+3) Data analysis (statistical tests and figure generation).
+   - 16S specific analyses
+   - ITS specific analyses
+   - picrust2 analysis
+   - combined analyses
 
-Note the we include some prerequisite code as well:
-- Metadata preparation
-- DECIPHER classifier training for taxonomic identification of ITS
-- Code for running picrust2 for 16S amplicons.
-
-This is a work in progress and we will denote code included so far below:
-- DECIPHER classifier training for taxonomic identification of ITS
+Presently, bioinformatics pipelines are posted, but analyses are private/in progress.
