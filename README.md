@@ -14,12 +14,16 @@ This research was conducted as part of the AIMS Project (Aquatic Intermittency e
 Where needed, references are provided in-line with code for data sources that must be downloaded externally. This is a work in progress, data resources published so far are listed below: 
 - Microbial field sampling metadata:
   Bond, C. T., A. Stafford, K. A. Kuehn (2025). AIMS_SE_approach2_approach3_CHLA, HydroShare, http://www.hydroshare.org/resource/cd2852e4a0ca4e8d8d65dd3bcd7bd8ad, accessed on: 04/23/2025
+- Hydrographic / Environmental data
+  Peterson, D., N. Jones (2025). AIMS_SE_TAL_ENVI, HydroShare, http://www.hydroshare.org/resource/81c003a7b8474d63a31641a4f375fd18
 - Chlorophyll-a data:
   Bond, C. T., A. Stafford, K. A. Kuehn (2025). AIMS_SE_approach2_approach3_CHLA, HydroShare, http://www.hydroshare.org/resource/cd2852e4a0ca4e8d8d65dd3bcd7bd8ad
 - Stream temperature, intermittency, and relative conductivity logger data used to estimate percent of time sites were wet:
   Peterson, D., N. Jones (2025). Talladega Stream Temperature, Intermittency, and Conductivity Data (AIMS_SE_TAL_approach1_STIC), HydroShare, http://www.hydroshare.org/resource/ff306bec9fb24e52aa809dbb4d074731
-- MIMS data (for dissolved oxygen):
+- MIMS (dissolved O2, N2, and Ar):
   Zarek, K., A. Burgin, S. Speir (2025). AIMS_SE_Approach3_MIMS, HydroShare, http://www.hydroshare.org/resource/3077feeca19e4bcaaf708d380203be00
+- Dissolved Greenhouse (CO2, CH4, N2O)
+
 - NCBI for sequencing data (TBD)
 
 
