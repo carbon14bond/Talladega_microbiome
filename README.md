@@ -44,5 +44,5 @@ Where needed, references are provided in-line with code for data sources that mu
 
 ### Preliminary analysis
 Leaf litter, rock surfaces, and sediments differed in both prokaryotic and fungal community composition. 
-![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/beta-sixway-05-13-2025_orig.png)
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/overview-05-14-2025_orig.png)
 Figure 2) For prokaryotes and fungi, ASV accumulations curves for each substrate across all sites, Venn diagrams showing unique ASVs occurring in substrates, and NMDS plots showing difference between substrates and between intermittent and ephemeral sites. 
