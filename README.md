@@ -29,7 +29,7 @@ Figure 1) Map of the stream network, with all samplling locations indicated by s
 ### Data availability:
 Where needed, references are provided in-line with code for data sources that must be downloaded externally. This is a work in progress, data resources published so far are listed below: 
 - Microbial field sampling metadata:
-  Bond, C. T., A. Stafford, K. A. Kuehn (2025). AIMS_SE_approach2_approach3_CHLA, HydroShare, http://www.hydroshare.org/resource/cd2852e4a0ca4e8d8d65dd3bcd7bd8ad, accessed on: 04/23/2025
+  Bond, C. T., K. A. Kuehn (2025). AIMS_SE_approach2_approach3_MIME, HydroShare, http://www.hydroshare.org/resource/3161225427d8472d9f347068e1afab61
 - Hydrographic / Environmental data
   Peterson, D., N. Jones (2025). AIMS_SE_TAL_ENVI, HydroShare, http://www.hydroshare.org/resource/81c003a7b8474d63a31641a4f375fd18
 - Chlorophyll-a data:
