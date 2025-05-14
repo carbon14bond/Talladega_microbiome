@@ -1,14 +1,30 @@
-# Talladega_microbiome
-
+# Talladega Non-Perennial Stream Microbiome Analysis
 ## This is a work in progress for a manuscript in preparation:
 
-Microbial communities across a non-perennial stream continuum in an Alabama Piedmont forest.
-
-Bioinformatics and Data analysis
-
-This repository contains code for replicating an analysis of fungal and prokaryotic communities collected from an intermittent stream network, associated with a manuscript (Bond et al. In Preparation).
+This repository contains code for replicating **preliminary** an analysis of fungal and prokaryotic communities collected from an intermittent stream network, associated with a manuscript (Bond et al. In Preparation).
 
 This research was conducted as part of the AIMS Project (Aquatic Intermittency effects on Microbiomes in Streams), supported by an NSF EPSCoR Track II Grant # OIA 2019603
+
+# Bioinformatics and Analysis Pipelines
+This project is composed of three main components:
+1) Metadata preparation
+   - Combining various metadata for downstream analyses (i.e., hydrographic, network, and biogeochemistry data from sites).
+   - Map preparation, making the map of sites along the network.
+2) Bioinformatics pipelines
+   - dada2 pipelines for 16S V4 (prokaryotes) and ITS (fungi) to generate ASV counts and taxonomy
+   - picrust2 for functional gene estimation for 16S data
+   - DECIPHER classifier training to help improve taxonomy assignment for fungi.
+3) Data analysis (statistical tests and figure generation).
+   - Combined analyses of prokaryote and fungal communities 
+   - picrust2 analysis
+  
+This repository is a work in progress and dos no yet contain all code or data.
+
+## Introduction
+Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
+STIC sensors deployed across most sites allowed us to estimate the percent of time surface water was present over an 11-month period.
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/tal-map-prc-wet_orig.png)
+Figure 1) Map of the stream network, with all samplling locations indicated by shapes. 
 
 ### Data availability:
 Where needed, references are provided in-line with code for data sources that must be downloaded externally. This is a work in progress, data resources published so far are listed below: 
@@ -26,29 +42,7 @@ Where needed, references are provided in-line with code for data sources that mu
 
 - NCBI for sequencing data (TBD)
 
-
-# Bioinformatics and Analysis Pipelines
-This project is composed of three main components:
-1) Metadata preparation
-   - Combining various metadata for downstream analyses (i.e., hydrographic, network, and biogeochemistry data from sites).
-   - Map preparation, making the map of sites along the network.
-2) Bioinformatics pipelines
-   - dada2 pipelines for 16S V4 (prokaryotes) and ITS (fungi) to generate ASV counts and taxonomy
-   - picrust2 for functional gene estimation for 16S data
-   - DECIPHER classifier training to help improve taxonomy assignment for fungi.
-3) Data analysis (statistical tests and figure generation).
-   - 16S specific analyses
-   - ITS specific analyses
-   - picrust2 analysis
-   - combined analyses
-
-Presently, bioinformatics pipelines are posted, but analyses are private/in progress.
-
-## Introduction
-Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
-STIC sensors deployed across most sites allowed us to estimate the percent of time surface water was present over an 11-month period.
-![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/tal-map-prc-wet_orig.png)
-
 ### Preliminary analysis
 Leaf litter, rock surfaces, and sediments differed in both prokaryotic and fungal community composition. 
 ![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/beta-sixway-05-13-2025_orig.png)
+Figure 2) For prokaryotes and fungi, ASV accumulations curves for each substrate across all sites, Venn diagrams showing unique ASVs occurring in substrates, and NMDS plots showing difference between substrates and between intermittent and ephemeral sites. 
