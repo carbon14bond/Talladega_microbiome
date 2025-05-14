@@ -43,3 +43,12 @@ This project is composed of three main components:
    - combined analyses
 
 Presently, bioinformatics pipelines are posted, but analyses are private/in progress.
+
+## Introduction
+Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
+STIC sensors deployed across most sites allowed us to estimate the percent of time surface water was present over an 11-month period.
+![alt text]([https://ctbond.weebly.com/uploads/1/5/2/6/152638843/tal-map-prc-wet_orig.png])
+
+### Preliminary analysis
+Leaf litter, rock surfaces, and sediments differed in both prokaryotic and fungal community composition. 
+![alt text]([https://ctbond.weebly.com/uploads/1/5/2/6/152638843/beta-sixway-05-13-2025_orig.png])
