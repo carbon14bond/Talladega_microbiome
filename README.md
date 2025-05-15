@@ -23,7 +23,7 @@ This repository is a work in progress and dos no yet contain all code or data.
 ## Introduction
 Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
 STIC sensors deployed across most sites allowed us to estimate the percent of time surface water was present over an 11-month period.
-![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/tal-map-prc-wet_orig.png)
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/published/tal-map-prc-wet.png?1747344957)
 Figure 1) Map of the stream network, with all samplling locations indicated by shapes. 
 
 ### Data availability:
