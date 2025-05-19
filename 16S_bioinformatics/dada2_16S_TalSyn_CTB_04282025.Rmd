@@ -461,13 +461,3 @@ write.table(t(asv_tab), "TalSyn_16S_dada2_ASVs_04.25.2025.count_table", sep="\t"
 rownames(tax_info) <- gsub(pattern=">", replacement="", x=asv_headers)
 write.csv(tax_info, "TalSyn_16S_dada2_ASV_taxonomy_04.25.2025.csv")
 ```
-
-
-count table as tsv for PICRUST2
-```{r}
-asvtab <- read.table("/Users/kuehnlab/AIMS_Talladega_synoptic/16S/dada2_16S_TalSyn_CTB/TalSyn_16S_dada2_ASVs_04.25.2025.count_table", header=T, row.names=1, check.names=F, sep="\t")
-asvtab<- as.data.frame(t(asvtab))
-asvtab <- tibble::rownames_to_column(asvtab, "ASV_ID")
-library(readr)
-write_tsv(asvtab,"TalSyn_16S_dada2_ASV_counts_04.25.2025.tsv")
-```
