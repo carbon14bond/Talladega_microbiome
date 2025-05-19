@@ -8,6 +8,6 @@ As inputs, we use:
 
 In the terminal, we ran the complete picrust2 pipeline as follows:
 
-`picrust2_pipeline.py -s TalSyn_16S_dada2_ASVs_04.25.2025.fasta -i TalSyn_16S_dada2_ASV_counts_for_pricust2_04.30.2025.tsv -o picrust2_out_pipeline -p 1`
+`picrust2_pipeline.py -s TalSyn_16S_dada2_ASVs_04.25.2025.fasta -i TalSyn_16S_dada2_ASV_counts_for_pricust2_05.19.2025.tsv -o picrust2_out_pipeline -p 1`
 
 Outputs were then used in the picrust data analysis .Rmd
