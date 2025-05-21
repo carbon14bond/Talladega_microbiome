@@ -8,23 +8,26 @@ This research was conducted as part of the AIMS Project (Aquatic Intermittency e
 # Bioinformatics and Analysis Pipelines
 This project is composed of three main components:
 1) Metadata preparation
-   - Combining various metadata for downstream analyses (i.e., hydrographic, network, and biogeochemistry data from sites).
-   - Map preparation, making the map of sites along the network.
+   - Combining environmental / hydrographic / biogeochemistry / microbial metadata into a single metadata table for downstream analyses.
+   - Map preparation, making the map of the watershed / stream network / sampling sites. 
 2) Bioinformatics pipelines
    - dada2 pipelines for 16S V4 (prokaryotes) and ITS (fungi) to generate ASV counts and taxonomy
-   - picrust2 for functional gene estimation for 16S data
-   - DECIPHER classifier training to help improve taxonomy assignment for fungi.
+   - DECIPHER classifier training for ITS to help improve taxonomy assignment for fungi.
 3) Data analysis (statistical tests and figure generation).
-   - Combined analyses of prokaryote and fungal communities 
-   - picrust2 analysis
+   - Analysis divided into multiple sections:
+     - 0.1: ASV occurence summary and rarefaction for downstream analyses
+     - 0.2: Diversity and community composition across the stream continuum
+     - 0.3: Taxonomic groups across the stream continuum
+     - 0.4: Functional groups across the stream continuum
   
-This repository is a work in progress and dos no yet contain all code or data.
+This repository is a work in progress and does not yet contain all code or data.
 
 ## Introduction
 Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
 STIC sensors deployed across most sites allowed us to estimate the percent of time surface water was present over an 11-month period.
-![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/published/tal-map-prc-wet.png?1747344957)
-Figure 1) Map of the stream network, with all samplling locations indicated by shapes. 
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/talmap5-21-2025_orig.png)
+
+Figure 1) Study watershed and stream network, with STIC sensor-equipped sites colored by the percent of time they were wet over an 11-month period, and non-sensor-equipped sites colored in grey. Sites were also classified as ephemeral or intermittent based on flow permanence, and one beaver pond site was permanent. Some ephemeral sites were dry at the time of sampling, shown on the map as hollow circles. 
 
 ### Data availability:
 Where needed, references are provided in-line with code for data sources that must be downloaded externally. This is a work in progress, data resources published so far are listed below: 
