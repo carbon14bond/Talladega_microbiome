@@ -10,7 +10,7 @@ output: html_document
 ## Analysis_0.1: Overview and Rarefaction of 16S and ITS ASVs Data
 
 ### Introduction
-In the previous R markdowns for 16S and ITS bioinformatics (DADA2 pipelines for processing amplicon sequence data), we generated ASV counts and taxonomy for prokaryotes (16S) and fungi (ITS). 
+In the previous R markdowns for 16S and ITS bioinformatics (DADA2 pipelines for processing amplicon sequence data), we generated ASV counts and taxonomy for prokaryotes (16S) and fungi (ITS). Now we will take our first look at the data, the number of ASVs and taxonomic groups, and the occurences of ASV in each substrate type and across the study overall. Then, at the end of this pipeline, we export rarefied count data and some preliminary figures that will be used in the next portion of the analysis. After this Rmarkdown, check out Analysis 0.2 for further analysis of microbial diversity and community composition across the stream network. 
 
 ## Setup
 ```{r, include=FALSE}
@@ -75,6 +75,7 @@ taxtab16S<- filter(taxtab16S, Family!='Mitochondria')
 taxtab16S<- filter(taxtab16S, Order!='Chloroplast')
 
 asvtab16S <- otu_table(asvtab16S, taxa_are_rows = FALSE)
+
 taxtab16S <- tax_table(as.matrix(taxtab16S))
 metadata <- sample_data(metadata_full)
 #combine into phyloseq object
@@ -204,11 +205,127 @@ tax_table(pseqtestITS)[,"Kingdom"] <- sapply(str_replace(tax_table(pseqtestITS)[
 ```
 ##############################################################################
 
-## ASVs across all samples:
-We can visualize the total numbers of ASVs across all samples in two ways:
-1) With accumulation curves, showing how many unique ASVs occured across all all sites (by substrate)
-2) Venn diagrams shohwing the occurence of
-## Accumulation curves from unrarefied 16S data
+## 0.1.1
+### Preliminary taxonomic overview:
+
+```{r}
+### extract taxonomy table from phyloseq object
+taxtab16S<- as.data.frame(tax_table(pseqtest16S))
+
+###### Bacteria #######################################
+## number of bacterial ASVs
+nrow(taxtab16S[taxtab16S$Kingdom=="Bacteria",])
+
+## unique phyla of Bacteria
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Bacteria" & !is.na(taxtab16S[,2]),2])
+length(x)
+x
+
+## unique classes of Bacteria
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Bacteria" & !is.na(taxtab16S[,3]),3])
+length(x)
+x
+
+## unique families of Bacteria
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Bacteria" & !is.na(taxtab16S[,5]),5])
+length(x)
+x
+
+## unique genera of Bacteria
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Bacteria" & !is.na(taxtab16S[,6]),6])
+length(x)
+#x
+## number of bacterial ASVs without family assigned
+sum(is.na(taxtab16S[taxtab16S$Kingdom=="Bacteria",5]))
+
+## number of bacterial ASVs without genus assigned
+sum(is.na(taxtab16S[taxtab16S$Kingdom=="Bacteria",6]))
+
+## proportion of bacterial ASVs without genus assigned
+sum(is.na(taxtab16S[taxtab16S$Kingdom=="Bacteria",6]))/nrow(taxtab16S[taxtab16S$Kingdom=="Bacteria",])
+
+################
+###### Archaea #######################################
+## number of archaeal ASVs
+nrow(taxtab16S[taxtab16S$Kingdom=="Archaea",])
+
+## unique phyla of Archaea
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Archaea" & !is.na(taxtab16S[,2]),2])
+length(x)
+x
+
+## unique classes of Archaea
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Archaea" & !is.na(taxtab16S[,3]),3])
+length(x)
+x
+
+## unique families of Archaea
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Archaea" & !is.na(taxtab16S[,5]),5])
+length(x)
+x
+
+## unique genera of Archaea
+x<- unique(taxtab16S[taxtab16S$Kingdom=="Archaea" & !is.na(taxtab16S[,6]),6])
+length(x)
+
+## number of Archaeal ASVs without family assigned
+sum(is.na(taxtab16S[taxtab16S$Kingdom=="Archaea",5]))
+
+## number of Archaeal ASVs without genus assigned
+sum(is.na(taxtab16S[taxtab16S$Kingdom=="Archaea",6]))
+
+## proportion of Archaeal ASVs without genus assigned
+sum(is.na(taxtab16S[taxtab16S$Kingdom=="Archaea",6]))/nrow(taxtab16S[taxtab16S$Kingdom=="Archaea",])
+
+
+################
+###### Fungi #######################################
+
+### extract taxonomy table from phyloseq object
+taxtabITS<- as.data.frame(tax_table(pseqtestITS))
+
+## number of fungal ASVs
+nrow(taxtabITS[taxtabITS$Kingdom=="Fungi",])
+
+## unique phyla of Fungi
+x<- unique(taxtabITS[taxtabITS$Kingdom=="Fungi" & !is.na(taxtabITS[,2]),2])
+length(x)
+x
+
+## unique classes of Fungi
+x<- unique(taxtabITS[taxtabITS$Kingdom=="Fungi" & !is.na(taxtabITS[,3]),3])
+length(x)
+x
+
+## unique families of Fungi
+x<- unique(taxtabITS[taxtabITS$Kingdom=="Fungi" & !is.na(taxtabITS[,5]),5])
+length(x)
+x
+
+## unique genera of Fungi
+x<- unique(taxtabITS[taxtabITS$Kingdom=="Fungi" & !is.na(taxtabITS[,6]),6])
+length(x)
+
+## number of Fungal ASVs without family assigned
+sum(is.na(taxtabITS[taxtabITS$Kingdom=="Fungi",5]))
+
+## number of Fungal ASVs without genus assigned
+sum(is.na(taxtabITS[taxtabITS$Kingdom=="Fungi",6]))
+
+## proportion of Fungal ASVs without genus assigned
+sum(is.na(taxtabITS[taxtabITS$Kingdom=="Fungi",6]))/nrow(taxtabITS[taxtabITS$Kingdom=="Fungi",])
+
+
+```
+
+
+## 0.1.2 
+## ASV occurences across all samples:
+We can visualize the total numbers of unique ASVs across all samples in two ways:
+1) With accumulation curves, showing how many unique ASVs occurred across in each substrate type across all sites (by substrate)
+2) Venn diagrams showing the occurrences of ASVs in each substrate, and ASVs shared in common between substrates.
+
+### Accumulation curves from unrarefied 16S data
 ```{r}
 
 ### epilithon leaf sediment 
@@ -284,12 +401,12 @@ ASVaccumsub16S
 invisible(dev.off())
 
 save(ASVaccumsub16S, file = "/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsub16S.rdata")
-load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsub16S.rdata")
-ASVaccumsub16S
+#load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsub16S.rdata")
+#ASVaccumsub16S
 ```
 Saved ASVaccumsub so I can combine it in a Beta Diversity figure with multiple other plots.
 
-## Venn diagram of unrarefied 16S ASVs
+### Venn diagram of unrarefied 16S ASVs
 
 ```{r}
 library(MicEco)
@@ -303,38 +420,12 @@ venndiagram16S<- ps_venn(pseqtest16S,group="substrate", labels=c('Epilithic biof
 venndiagram16S
 
 save(venndiagram16S, file = "/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagram16S.rdata")
-load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagram16S.rdata")
-venndiagram16S
-```
-
-summary stats on taxa before rarefaction 
-```{r}
-tax_tib16S<-as.data.frame(pseqtest16S@tax_table@.Data)
-unique_gen16S<-unique(tax_tib16S$Genus)
-###number of genera
-length(unique_gen16S)
-
-unique_fam16S<-unique(tax_tib16S$Family)
-#number of families
-length(unique_fam16S)
-
-unique(tax_tib16S$Phylum)
-#unique(tax_tib$Class)
-#unique(tax_tib$Family)
-
-## number of ASV without genus assigned
-sum(is.na(tax_tib16S$Genus))
-
-## proportion of prokaryote ASVs without genus assigned
-sum(is.na(tax_tib16S$Genus))/nrow(tax_tib16S)
-
-
+#load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagram16S.rdata")
+#venndiagram16S
 ```
 
 
-#############
-
-## Accumulation curves from unrarefied ITS data
+### Accumulation curves from unrarefied ITS data
 ```{r}
 botu<- pseqtestITS@otu_table[samdf_ITS$substrate=='B',]
 lotu<- pseqtestITS@otu_table[samdf_ITS$substrate=='L',]
@@ -381,8 +472,8 @@ scale_color_discrete(name='Substrate:', labels=c('Epilithic Biofilms', 'Leaf Lit
   #scale_fill_discrete(labels=c('High Program',
 #  custom_colors
 ASVaccumsubITS
-ASVaccumsubITSb<- ASVaccumsubITS+ theme(legend.position="bottom", plot.margin = unit(c(1, 1, 2, 2), "lines"))
-ASVaccumsubITSb
+#ASVaccumsubITSb<- ASVaccumsubITS+ theme(legend.position="bottom", plot.margin = unit(c(1, 1, 2, 2), "lines"))
+#ASVaccumsubITSb
 plotout <- "ITS_ASV_accum.curve_substrate_05.12.2025.tiff"
 agg_tiff(filename=plotout, width=2555, height=1464, units="px",
          pointsize=10, res=600, compression="lzw", scaling=0.5)
@@ -391,14 +482,13 @@ ASVaccumsubITS
 invisible(dev.off())
 
 save(ASVaccumsubITS, file = "/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsubITS.rdata")
-load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsubITS.rdata")
-ASVaccumsubITS
+#load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsubITS.rdata")
+#ASVaccumsubITS
 
 ```
 Saved ASVaccumsub so I can combine it in a Beta Diversity figure with multiple other plots.
 
-## Venn diagram of unrarefied ITS ASVs
-
+### Venn diagram of unrarefied ITS ASVs
 ```{r}
 library(MicEco)
 library(eulerr)
@@ -410,37 +500,14 @@ venndiagramITS<- ps_venn(pseqtestITS,group="substrate", labels=c('Epilithic biof
 
 venndiagramITS
 save(venndiagramITS, file = "/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagramITS.rdata")
-load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagramITS.rdata")
-venndiagramITS
+#load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagramITS.rdata")
+#venndiagramITS
 ```
 
 
-
-summary stats on taxa before rarefaction 
-```{r}
-tax_tibITS<-as.data.frame(pseqtestITS@tax_table@.Data)
-unique_genITS<-unique(tax_tibITS$Genus)
-###number of genera
-length(unique_genITS)
-
-unique_famITS<-unique(tax_tibITS$Family)
-#number of families
-length(unique_famITS)
-
-unique(tax_tibITS$Phylum)
-#unique(tax_tib$Class)
-#unique(tax_tib$Family)
-
-## number of ASV without genus assigned
-sum(is.na(tax_tibITS$Genus))
-
-## proportion without genus assigned
-sum(is.na(tax_tibITS$Genus))/nrow(tax_tibITS)
-
-```
-
-
-## Rarefaction
+## 0.1.2 
+## Rarefaction for downstream analyses
+#### 16S Rarefaction
 16S data rarefaction
 ```{r}
 library(GUniFrac)
@@ -448,7 +515,7 @@ summary(rowSums(cured_asvs16S))
 sum(rowSums(cured_asvs16S))
 rowSums(cured_asvs16S)
 set.seed(2025)
-rarefied16S <- Rarefy(cured_asvs16S, 30550)
+rarefied16S <- Rarefy(cured_asvs16S, 30000)
 
 rarefied16S$discard
 rarasv16S<-rarefied16S$otu.tab.rff
@@ -458,10 +525,14 @@ summary(rowSums(rarasv16S))
 
 ## look at read depths for the different substrates:
 asvtab16S <- otu_table(rarasv16S, taxa_are_rows = FALSE)
-taxtab16S <- tax_table(taxtab16S)
+taxtab16S <- tax_table(pseqtest16S)
 
 #combine into phyloseq object
 pseqtest16S <- phyloseq(asvtab16S, taxtab16S, metadata)
+
+## Number of rarefied samples of each type
+samdf_16S <- data.frame(sample_data(pseqtest16S))
+table(samdf_16S$substrate)
 
 # SAVE RAREFIED 16S PHYLOSEQ object as RDATA
 save(pseqtest16S, file = "/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtest16S.rdata")
@@ -469,9 +540,8 @@ load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtest16S.rdata")
 pseqtest16S
 ```
 
-## Rarefaction
-NMDS of fungi, rarefied data
-rarefaction
+#### ITS Rarefaction
+fungal data rarefaction
 ```{r}
 library(GUniFrac)
 summary(rowSums(cured_asvsITS))
@@ -489,10 +559,15 @@ summary(rowSums(rarasvITS))
 
 ## look at read depths for the different substrates:
 asvtabITS <- otu_table(rarasvITS, taxa_are_rows = FALSE)
-taxtabITS <- tax_table(taxtabITS)
+taxtabITS <- tax_table(pseqtestITS)
 
 #combine into phyloseq object
 pseqtestITS <- phyloseq(asvtabITS, taxtabITS, metadata)
+
+## Number of rarefied samples of each type
+samdf_ITS <- data.frame(sample_data(pseqtestITS))
+table(samdf_ITS$substrate)
+
 
 # SAVE RAREFIED 16S PHYLOSEQ object as RDATA
 save(pseqtestITS, file = "/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtestITS.rdata")
@@ -500,9 +575,7 @@ load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtestITS.rdata")
 pseqtestITS
 ```
 
-Not the rarefied 16S and ITS data, as well as accumulation curves and Venn Diagrams, are exported at .Rdata files. 
-This is helpful as my laptop's RAM is a bit overwhelmed handling the full 16S data, so being able to start fresh with just the rarefied data should help things run a little smoother. 
+Now the rarefied 16S and ITS data, as well as accumulation curves and Venn Diagrams, are exported as .Rdata files. 
 
-
-
+See Analysis 0.2 to continue with analyzing microbial diversity and community composition across the stream network.
 
