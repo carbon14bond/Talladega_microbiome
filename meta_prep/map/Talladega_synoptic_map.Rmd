@@ -1,0 +1,317 @@
+---
+title: "Talladega_synoptic_map"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# Talladega Map, Charles Bond et al. microbiome Tal Synoptic manuscript
+#### generating map of sites labeled with metadata
+
+## Shapefiles for maps are available on Hydroshare:
+#### Peterson, D., N. Jones (2025). AIMS_SE_TAL_ENVI, HydroShare, http://www.hydroshare.org/resource/81c003a7b8474d63a31641a4f375fd18
+
+```{r}
+# setup
+rm(list = ls())
+setwd("/Users/chunk/Talladega_synoptic/meta_prep/map")
+knitr::opts_knit$set(root.dir = "/Users/chunk/Talladega_synoptic/meta_prep/map")
+library(tidyverse)
+library(RColorBrewer)
+# library(rgdal) # might be necessary to use earlier version of R
+library(sf)
+
+theme_set(theme_bw() + theme(
+  plot.title = element_text(size=20, color="black"),
+  axis.text.x = element_text(size=15, color="black"),
+  axis.text.y = element_text(size=15, color="black"),
+  axis.title.x = element_text(size=15),
+  axis.title.y = element_text(size=15),
+  legend.text = element_text(size=12),
+  legend.title = element_text(size=15),
+  #  legend.position = "bottom",
+  #  legend.key=element_blank(),
+  #  legend.key.size = unit(0.5, "cm"),
+  #  legend.spacing.x = unit(0.1, "cm"),
+  #  legend.spacing.y = unit(0.1, "cm"),
+  panel.background = element_blank(), 
+  #panel.border = element_rect(colour = "black", fill=NA, size=1),
+  plot.background = element_blank()))
+
+```
+
+```{r}
+setwd("/Users/chunk/Talladega_synoptic/meta_prep/map")
+talmap<- st_read("streamnetwork_TAL.shp")
+
+talmap_ll <- st_transform(talmap, "+proj=longlat +ellps=WGS84 +datum=WGS84")
+
+talws<- st_read("watershed_TAL.shp")
+talws_ll <- st_transform(talws, "+proj=longlat +ellps=WGS84 +datum=WGS84")
+
+#head(st_coordinates(kzmap_ll))
+# Check the extent of the transformed data
+print(st_bbox(talmap_ll))
+
+# Check the CRS of the transformed data
+print(st_crs(talmap_ll))
+
+strmp1 <- ggplot() +
+  geom_sf(data = talws_ll) +
+  geom_sf(data = talmap_ll) +
+  coord_sf(ylim=c(33.7590, 33.7685), xlim = c(-85.607, -85.595))
+strmp1
+
+meta_tab<- read.csv("meta_test_05.12.2025.csv", row.names=1)
+meta_tab <- meta_tab %>% 
+  mutate(class_state = interaction(int_eph, WetDry, sep = "_"))
+## percent wet color scale, same as for dbRDA plots
+#pal<- c("#046C9A","#3A9AB2","#85B7B9","#ADC397","#DCCB4E","#E5A208","#ED6E04","#F11B00") # too red
+#common_limits <- c(0, 1) 
+meta_tab$int_eph<-as.factor(meta_tab$int_eph)
+intcolcolors<-c("goldenrod","forestgreen","darkblue")
+
+intmap<- ggplot(data=meta_tab, aes(x=long, y=lat, colour=int_eph, shape=WetDry))+
+  geom_point(size=3.5)+
+  scale_colour_manual(values = intcolcolors)+
+  scale_shape_manual(values = c(1,16))
+intmap
+
+TALmap <- ggplot() +
+  geom_sf(data = talws_ll) +
+  geom_sf(data = talmap_ll) +
+  coord_sf(ylim=c(33.7576, 33.7715), xlim = c(-85.60915, -85.5952))+
+ # coord_sf(ylim=c(39.071, 39.093), xlim = c(-96.595, -96.565))+
+  geom_point(data=meta_tab, aes(x=long, y=lat, colour=int_eph, shape=WetDry), size=3.3)+
+  #geom_text(data=meta_tab, aes(x=long, y=lat, label = siteId, hjust=1.25, vjust=0.3
+  #                             ), size = 1.6)+
+  scale_colour_manual(values = intcolcolors)+
+  scale_shape_manual(values = c(1,16))+
+  labs(legend="right", shape="Wet/Dry:", color="Classification:", x="Longitude", y="Latitude"
+  )+ 
+  theme(axis.text.x = element_text(size = 8), axis.text.y = element_text(size = 8), legend.title=element_text(size=10), 
+        legend.text=element_text(size=10))
+TALmap
+
+plotout <- "TAL_inteph_map_6.06.2025.tiff"
+agg_tiff(filename=plotout, width=2500, height=2000, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+TALmap
+invisible(dev.off())
+
+
+#meta_tab$classification <- factor(meta_tab$classification, levels = c('ephemeral','intermittent','semipermanent','no_sensor'))
+
+## percent wet color scale, same as for dbRDA plots
+pal<- c("#046C9A","#3A9AB2","#85B7B9","#ADC397","#DCCB4E","#E5A208","#ED6E04","#F11B00")
+common_limits <- c(0, 1) 
+sticwet<- ggplot(data=meta_tab, aes(x=long, y=lat, colour=percentwet_11month))+
+  geom_point(size=3.5)+
+  scale_colour_gradientn(colors = rev(pal), labels = scales::percent_format(), limits = common_limits)
+sticwet
+
+TALmap <- ggplot() +
+  geom_sf(data = talws_ll) +
+  geom_sf(data = talmap_ll) +
+  coord_sf(ylim=c(33.7576, 33.7715), xlim = c(-85.60915, -85.5952))+
+  # coord_sf(ylim=c(39.071, 39.093), xlim = c(-96.595, -96.565))+
+  geom_point(data=meta_tab, aes(x=long, y=lat, colour=percentwet_11month, shape=class_state), size=3.3)+
+  scale_colour_gradientn(colors = rev(pal), labels = scales::percent_format(), limits = common_limits)+
+  scale_shape_manual(values = c(1,16,17,15))+
+  labs(legend="right", shape="Site class:", color="Percent Wet (11-month avg.):", x="Longitude", y="Latitude"
+  )+ 
+  theme(axis.text.x = element_text(size = 8), axis.text.y = element_text(size = 8), legend.title=element_text(size=10), 
+        legend.text=element_text(size=10))
+TALmap
+
+
+plotout <- "TALmap11month6.7.2025.tiff"
+agg_tiff(filename=plotout, width=2500, height=2000, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+TALmap
+invisible(dev.off())
+```
+
+
+### environmental data correlation plots 
+A. All sites (excluding beaver pond)
+```{r}
+### remove beaver pond outlier
+meta_tab_sites<-meta_tab[meta_tab$siteId!='TLMBP',]
+meta_tab_sites
+meta_tab_sites$Acer_spp
+
+metasite_corr<- meta_tab_sites[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp")]
+
+library(linkET)
+metacorrplot_47<- qcorrplot(correlate(x=metasite_corr[1:14], y=NULL, method = "spearman",adjust = TRUE,
+  adjust_method = "holm"),
+  type = "lower", diag = FALSE, grid_size = 0.6)+
+  geom_square() +
+  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+            only_mark = TRUE)+
+  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
+  guides(fill = guide_colorbar(title = "Spearman's rho"))+
+  theme(legend.key.size = unit(9,"pt"),
+        axis.text = element_text(size = 9,color = "black"),
+        strip.text = element_text(size = 9,color = "black"),
+        plot.title=element_text(size=12),
+        axis.text.x = element_text(size = 9),axis.text.y = element_text(size = 8),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7))+
+  theme(legend.position = "right")+
+  xlab(label="")+
+  ylab(label="")+
+  labs(title = "All stream sites (n=47)")
+metacorrplot_47
+
+
+```
+
+B.
+```{r}
+## Sites with 11 month percent wet
+metadata_sitecharsa<-meta_tab_sites[!is.na(meta_tab_sites$percentwet_11month),]
+metasite_corr<- metadata_sitecharsa[,c("percentwet_11month", "S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp")]
+
+metacorrplot11<- qcorrplot(correlate(x=metasite_corr[1:15], y=NULL, method = "spearman", adjust = TRUE,
+  adjust_method = "holm"), type = "lower", diag = FALSE, grid_size = 0.6) +
+  geom_square() +
+  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+            only_mark = TRUE)+
+  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
+  guides(fill = guide_colorbar(title = "Spearman's rho"))+
+  theme(legend.key.size = unit(9,"pt"),
+        axis.text = element_text(size = 9,color = "black"),
+        strip.text = element_text(size = 9,color = "black"),
+        plot.title=element_text(size=12),
+        axis.text.x = element_text(size = 9),axis.text.y = element_text(size = 8),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7))+
+  theme(legend.position = "right")+
+  xlab(label="")+
+  ylab(label="")+
+  labs(title = "STIC sites (n=40)")
+metacorrplot11
+### for supplemental information, export plots
+
+```
+
+```{r}
+## Sites with complete dissolved gas data 
+metadata_sitecharsa<-meta_tab_sites[!is.na(meta_tab_sites$CO2_avg),]
+metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "stream_slope","Canopy_Cover_pct", "W_Chla", "O2_uM_avg","N2Ar_avg","CO2_avg","N2O_avg", "CH4_avg")]
+
+metacorrplotgas<- qcorrplot(correlate(x=metasite_corr[1:14], y=NULL, method = "spearman", adjust = TRUE,
+  adjust_method = "holm"), type = "lower", diag = FALSE, grid_size = 0.6) +
+  geom_square() +
+  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+            only_mark = TRUE)+
+  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
+  guides(fill = guide_colorbar(title = "Spearman's rho"))+
+  theme(legend.key.size = unit(9,"pt"),
+        axis.text = element_text(size = 9,color = "black"),
+        strip.text = element_text(size = 9,color = "black"),
+        plot.title=element_text(size=12),
+        axis.text.x = element_text(size = 9),axis.text.y = element_text(size = 8),
+        legend.title = element_text(size = 9),
+        legend.text = element_text(size = 7))+
+  theme(legend.position = "right")+
+  xlab(label="")+
+  ylab(label="")+
+  labs(title = "Dissolved gas sites (n=38)")
+metacorrplotgas
+
+```
+
+```{r}
+## Sites with complete dissolved gas data 
+metadata_sitecharsa<-meta_tab_sites[!is.na(meta_tab_sites$CO2_avg),]
+metadata_sitecharsa<-metadata_sitecharsa[!is.na(metadata_sitecharsa$percentwet_11month),]
+metasite_corr<- metadata_sitecharsa[,c("percentwet_11month", "O2_uM_avg","N2Ar_avg","CO2_avg","N2O_avg", "CH4_avg")]
+
+metacorrplotgas11<- qcorrplot(correlate(x=metasite_corr[1:6], y=NULL, method = "spearman", adjust = TRUE,
+  adjust_method = "holm"), type = "lower", diag = FALSE, grid_size = 0.6) +
+  geom_square() +
+  geom_mark(sep = '\n',size=6,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+            only_mark = TRUE)+
+  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
+  guides(fill = guide_colorbar(title = "Spearman's rho"))+
+  theme(legend.key.size = unit(10,"pt"),
+        axis.text = element_text(size = 10,color = "black"),
+        strip.text = element_text(size = 10,color = "black"),
+        plot.title=element_text(size=12),
+        axis.text.x = element_text(size = 10),axis.text.y = element_text(size = 10),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8))+
+  theme(legend.position = "right")+
+  xlab(label="")+
+  ylab(label="")+
+  labs(title = "STIC + Gas sites (n=31)")
+metacorrplotgas11
+
+```
+```{r}
+## Sites with 11 month percent wet
+metadata_sitecharsa<-meta_tab_sites[!is.na(meta_tab_sites$percentwet_11month),]
+metasite_corr<- metadata_sitecharsa[,c("percentwet_11month", "S_AFDM_prc","LL_AFDM_prc","elevation","drainage_area_ha","twi", "stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp")]
+
+metacorrplot11<- qcorrplot(correlate(x=metasite_corr[1:12], y=NULL, method = "spearman", adjust = TRUE,
+  adjust_method = "holm"), type = "lower", diag = FALSE, grid_size = 0.6) +
+  geom_square() +
+  geom_mark(sep = '\n',size=3,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+            only_mark = TRUE)+
+  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
+  guides(fill = guide_colorbar(title = "Spearman's rho"))+
+  theme(legend.key.size = unit(10,"pt"),
+        axis.text = element_text(size = 10,color = "black"),
+        strip.text = element_text(size = 10,color = "black"),
+        plot.title=element_text(size=12),
+        axis.text.x = element_text(size = 10),axis.text.y = element_text(size = 10),
+        legend.title = element_text(size = 10),
+        legend.text = element_text(size = 8))+
+  theme(legend.position = "right")+
+  xlab(label="")+
+  ylab(label="")+
+  labs(title = "STIC sites (n=40)")
+metacorrplot11
+### for supplemental information, export plots
+```
+
+```{r}
+library(cowplot)
+plotout <- "envi_corrplots_06.07.2025.tiff"
+agg_tiff(filename=plotout, width=4500, height=3600, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.7)
+plot_grid(metacorrplot_47, metacorrplot11, metacorrplotgas, metacorrplotgas11, labels="AUTO", ncol=2)
+invisible(dev.off())
+
+bcde<-plot_grid(metacorrplot_47, metacorrplot11, metacorrplotgas, metacorrplotgas11, labels=c('B','C','D','E'), ncol=2, scale = 1)
+TALmap
+
+plotout <- "map_corrplots_06.07.2025.tiff"
+agg_tiff(filename=plotout, width=4200, height=5800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.7)
+plot_grid(TALmap, bcde, labels=c('A',''), ncol=1, rel_heights = c(1,1.1))
+invisible(dev.off())
+
+bcde<-plot_grid(metacorrplot11, metacorrplotgas11, labels=c('B','C'), ncol=2, scale = 1.05)
+TALmap
+
+plotout <- "map_2corrplot_06.08.2025.tiff"
+agg_tiff(filename=plotout, width=5400, height=6000, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.9)
+plot_grid(TALmap, bcde, labels=c('A',''), ncol=1, rel_heights =c(1,0.7))
+invisible(dev.off())
+
+```
+
+```{r}
+## detatch linkET package, it interferes with downstream stats
+detach("package:linkET", unload=TRUE)
+```
+
