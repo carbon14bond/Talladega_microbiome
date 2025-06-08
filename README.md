@@ -58,6 +58,16 @@ Analysis:
 - 0.4: Genera and species across stream continuum.
 - 0.5: Predicted genes (PICRUSt2) across stream continuum.
 
+### Analysis 0.1 and 0.2
 Leaf litter, rock surfaces, and sediments differed in both prokaryotic and fungal community composition. 
 ![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/overview-05-21-2025_orig.png)
 Figure 2) For prokaryotes and fungi, ASV accumulations curves for each substrate across all sites, Venn diagrams showing unique ASVs occurring in substrates, and NMDS plots showing difference between substrates and between intermittent and ephemeral sites. 
+
+### Analysis 0.3
+Major prokaryotic and fungal taxa across the intermittent-ephemeraal continuum.
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/taxa-2-panel-05-22-2025_orig.png)
+Figure 3. Bars show average percent abundances in each microhabitat, separated into dry ephemeral sites, wet ephemeral sites, and wet intermittent sites.
+   (A) the top prokaryotic phyla, or classes of Pseudomonadota (formerly Proteobacteria).
+   (B) the top fungal phyla or classes of Ascomycota. 
+   
+
