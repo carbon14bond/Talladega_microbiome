@@ -1,0 +1,1019 @@
+---
+title: "Analysis_0.3_Taxonomic_groups"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+# Microbial Community Analysis: Talladega Forest Non-perennial Stream Network
+
+## Analysis_0.3: Microbial taxa across the stream network
+
+### Introduction
+Following the bioinformatics processing and Analysis 0.1 and 0.2, we will now look into the taxonomic groups of prokaryotes and fungi occuring in the stream. See the next analysis (0.4) for generalized linear latent variable models for top genera, species, or PICRUSt2-based functional trait assignment.
+
+## Setup
+```{r, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/chunk/Talladega_synoptic/Analysis")
+knitr::opts_knit$set(root.dir = "/Users/chunk/Talladega_synoptic/Analysis")
+options(knitr.duplicate.label = "allow") ### so I don't have to give chunks unique names
+```
+
+```{r}
+#library(dada2)
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(pheatmap)
+library(GUniFrac)
+library(pals)
+library(RColorBrewer)
+library(ragg)
+library(ggpubr)
+
+#Set theme
+theme_set(theme_bw() + theme(
+              plot.title = element_text(size=20, color="black"),
+              axis.text.x = element_text(size=15, color="black"),
+              axis.text.y = element_text(size=15, color="black"),
+              axis.title.x = element_text(size=15),
+              axis.title.y = element_text(size=15),
+              legend.text = element_text(size=12),
+              legend.title = element_text(size=15),
+            #  legend.position = "bottom",
+            #  legend.key=element_blank(),
+            #  legend.key.size = unit(0.5, "cm"),
+            #  legend.spacing.x = unit(0.1, "cm"),
+            #  legend.spacing.y = unit(0.1, "cm"),
+              panel.background = element_blank(), 
+              #panel.border = element_rect(colour = "black", fill=NA, size=1),
+              plot.background = element_blank()))
+```
+
+## Load phyloseq objects
+```{r}
+#prokaryotes
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtest16S.rdata")
+pseqtest16S
+
+#fungi
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtestITS.rdata")
+pseqtestITS
+
+## Cutting the single beaver pond site, its an outlier, the only permanent lentic site
+pseqtest16S <- subset_samples(pseqtest16S, siteId != "TLMBP")
+pseqtestITS <- subset_samples(pseqtestITS, siteId != "TLMBP")
+
+# extract sampe data
+samdf_16S <- data.frame(sample_data(pseqtest16S))
+samdf_ITS <- data.frame(sample_data(pseqtestITS))
+```
+
+## 0.3.1 
+### Relative Abundances of Major Prokaryotic Taxa
+First we will process and visualize the relative abundances of major taxonomic groups, and test a few hypotheses about our major taxa. 
+
+#### 0.3.1.1
+##### Prokaryotes: Bacteria vs. Archaea
+We want to compare the relative abundance of Bacteria and Archaea in order to test the hypothesis that 
+1) relative abundance of Archaea is higher in sediments than in other substrates, and 
+2) that the relative abundance of Archaea is positively correlated with water permanence
+
+```{r}
+kingcount16S <- otu_table(tax_glom(pseqtest16S, taxrank="Kingdom"), taxa_are_rows = FALSE)
+kingcount16S <- t(kingcount16S)
+#make vector of phyla names to set as row names
+kingcount16S_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Kingdom"))[,1]) 
+rownames(kingcount16S) <- as.vector(kingcount16S_vec)
+## convert to percent
+kingprop16S <- apply(kingcount16S, 2, function(x) x/sum(x)*100)
+
+### merge with metadata
+kingmerge <- merge(samdf_16S, t(kingprop16S),
+                  by="row.names", all=TRUE)
+rownames(kingmerge) <- kingmerge[,1]
+kingmerge <- kingmerge[,-1]
+
+### Overall Kingdom percentages
+mean(kingmerge$Bacteria)
+mean(kingmerge$Archaea)
+
+
+
+library(rstatix)
+stat.test <- kingmerge %>%
+wilcox_test(Archaea~substrate) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- kingmerge %>%
+  wilcox_effsize(Archaea~substrate)
+effsize
+
+cor_summary <- kingmerge[!is.na(kingmerge$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Archaea, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Archaea, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- kingmerge[!is.na(kingmerge$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Archaea, CH4_avg, method = "spearman"),
+    p_value = cor.test(Archaea, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+```
+
+#### Prokaryote phyla and classes
+
+```{r}
+#make taxonomy object by phylum
+phyla16S_counts_tab <- otu_table(tax_glom(pseqtest16S, taxrank="Phylum"), taxa_are_rows = FALSE)
+phyla16S_counts_tab <- t(phyla16S_counts_tab)
+#make vector of phyla names to set as row names
+phyla16S_tax_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Phylum"))[,2]) 
+rownames(phyla16S_counts_tab) <- as.vector(phyla16S_tax_vec)
+phyla16S_counts_tab
+write.csv(phyla16S_counts_tab, 'phyla16S_counts_05.21.25.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtest16S@otu_table
+#determine the number of unclassified seqs at the phylum level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(phyla16S_counts_tab)
+#Add a row of "unclassified" to the phylum count table
+phyla16S_and_unidentified_counts_tab <- rbind(phyla16S_counts_tab, "Unclassified_Phylum"=unclassified_tax_counts)
+
+```
+
+### split Pseudomonadota (Proteobacteria) into classes
+Apparently, in the time since I updated SILVA, Proteobacteria has been changed to 'Pseudomonadota', so I've had to update this code a bit. 
+```{r}
+#remove Proteobacteria for the purpose of separating it into classes later
+temp_major16S_taxa_counts_tab <- 
+  phyla16S_and_unidentified_counts_tab[!row.names(phyla16S_and_unidentified_counts_tab)
+                                    %in% "Pseudomonadota",]
+#make count table broken down by class
+class16S_counts_tab <- otu_table(tax_glom(t(pseqtest16S), taxrank="Class"))
+#make table containing phylum and class data
+class16S_tax_phy_tab <- tax_table(tax_glom(t(pseqtest16S), taxrank="Class"))
+phy_tmp_vec <- class16S_tax_phy_tab[,2]
+class16S_tmp_vec <- class16S_tax_phy_tab[,3]
+rows_tmp <- row.names(class16S_tax_phy_tab)
+class16S_tax_tab <- data.frame("Phylum"=phy_tmp_vec, "Class"=class16S_tmp_vec, row.names = rows_tmp)
+#make vector of just the Proteobacteria classes
+Pseudomonad_classes_vec <- as.vector(class16S_tax_tab[class16S_tax_tab$Phylum=="Pseudomonadota", "Class"])
+row.names(class16S_counts_tab) <- as.vector(class16S_tax_tab$Class)
+#make table of Proteobacteria classes
+Pseudomonad_class_counts_tab <- class16S_counts_tab[row.names(class16S_counts_tab) %in% Pseudomonad_classes_vec, ]
+#make table ofProteobacteria not identified to the class level
+Pseudomonad_no_class_annotated_counts <- 
+  phyla16S_and_unidentified_counts_tab[row.names(phyla16S_and_unidentified_counts_tab) %in% "Pseudomonadota",]-
+  colSums(Pseudomonad_class_counts_tab)
+#Now combine the tables
+major16S_taxa_counts_tab <- rbind(temp_major16S_taxa_counts_tab, Pseudomonad_class_counts_tab,
+                               "Unclassified_Pseudomonadota"=Pseudomonad_no_class_annotated_counts)
+head(major16S_taxa_counts_tab)
+
+```
+
+```{r}
+write.csv(major16S_taxa_counts_tab, "major16Staxa_count_rar_16S_05.21.25.csv")
+#Check that all sequences are accounted for
+identical(colSums(major16S_taxa_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+major16S_taxa_proportions_tab <- apply(major16S_taxa_counts_tab, 2, function(x) x/sum(x)*100)
+#colSums(major16S_taxa_proportions_tab)
+write.csv(major16S_taxa_proportions_tab, "major16Staxa_relative abundance_rar_16S_05.21.25.csv")
+
+```
+
+by family
+```{r}
+#make taxonomy object by genus
+family16S_counts_tab <- otu_table(tax_glom(pseqtest16S, taxrank="Family"), taxa_are_rows = FALSE)
+family16S_counts_tab <- t(family16S_counts_tab)
+#make vector of genus names to set as row names
+family16S_tax_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Family"))[,5]) 
+rownames(family16S_counts_tab) <- as.vector(family16S_tax_vec)
+
+#determine the number of unclassified seqs at the family level
+unclassified_family16S_counts <- colSums(t(asv_counts)) - colSums(family16S_counts_tab)
+unclassified_family16S_counts
+#Add a row of "unclassified" to the family count table
+family16S_and_unidentified_counts_tab <- rbind(family16S_counts_tab, 
+                                            "Unclassified_family"=unclassified_family16S_counts)
+write.csv(family16S_and_unidentified_counts_tab, "family16S raw abundance_rar_16S_05.21.25.csv")
+#Check that all seqs are accounted for.
+
+identical(colSums(family16S_and_unidentified_counts_tab), rowSums(asv_counts))
+
+#Convert totals to relative abundance
+family16S_proportions_tab <- apply(family16S_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(family16S_proportions_tab, "family relative abundance_rar_16S_05.21.25.csv")
+
+```
+
+
+```{r}
+#Merge metadata, phylum, and family abundances
+#phy_and_fam <- merge(t(major16S_taxa_counts_tab), t(family_and_unidentified_counts_tab),
+#                  by="row.names", all=TRUE)
+phy_and_fam <- merge(t(major16S_taxa_proportions_tab), t(family16S_proportions_tab),
+                  by="row.names", all=TRUE)
+phyfam <- phy_and_fam[,-1]
+rownames(phyfam) <- phy_and_fam[,1]
+tax_merge <- merge(samdf_16S, phyfam,
+                  by="row.names", all=TRUE)
+taxmerge16S <- tax_merge[,-1]
+rownames(taxmerge16S) <- tax_merge[,1]
+write.csv(tax_merge, "TALSYN_taxmerge16S_05.21.25.csv")
+
+```
+
+
+###Phylum-Class BARPLOT
+```{r}
+#major16S taxa, mean percent abundances across all samples:
+rowMeans(major16S_taxa_proportions_tab)
+
+#Select taxa that make up >90% of the total sequences
+
+phyla16Strim <- data.frame(major16S_taxa_proportions_tab[c("Alphaproteobacteria","Gammaproteobacteria","Cyanobacteriota","Actinomycetota","Myxococcota","Verrucomicrobiota","Bacteroidota","Acidobacteriota","Bacillota","Planctomycetota","Thermodesulfobacteriota","Chloroflexota","Thermoproteota"), ])
+#write.csv(phylatrim_t,"/Users/chunk/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/run_2/outputs/phylatrim.csv")
+#write.csv(major16S_taxa_proportions_tab,"/Users/chunk/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/major16Staxa.csv")
+#major16Staxa <- read.csv("~/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/major16Staxa.csv", row.names=1)
+#View(major16Staxa)
+#phylatrim <- read.csv("~/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/phylatrimt.csv", row.names=1)
+#View(phylatrim)
+
+#Create an "other" category for the phyla not retained
+filtered_proportions <- colSums(major16S_taxa_proportions_tab) - 
+  colSums(phyla16Strim)
+phyla16Strim <- rbind(phyla16Strim, "Other"=filtered_proportions)
+phyla16Strim
+
+#Add taxa names as a column
+phyla16Strim$Major_Taxa <- row.names(phyla16Strim)
+#transform into long format
+phyla16Slong <- gather(phyla16Strim, Sample, Proportion, -Major_Taxa)
+phyla16Slong$Sample <- gsub("X","",phyla16Slong$Sample)
+#add metadata
+#metadatap <- read.csv("~/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/metadata_punc.csv", row.names=1, stringsAsFactors=TRUE)
+#View(metadata_punc)
+#names(metadatap)
+```
+
+```{r}
+## [1] "substrate" "WetDry"
+phyla16Smet<-data.frame("Sample"=row.names(samdf_16S),
+                     "Substrate"=samdf_16S$substrate,
+                     "Classiification"=samdf_16S$class_state,
+                     stringsAsFactors=T)
+#merge metadata with major taxa data
+phyla16Slong <- merge(phyla16Slong, phyla16Smet)
+#Summarize by depth and hydration
+phyla16S_summary <- 
+  phyla16Slong %>% # the names of the new data frame and the data frame to be summarised
+  group_by(Substrate, Classiification, Major_Taxa) %>%   # the grouping variable
+  summarise(mean_prop = mean(Proportion))  # calculates the mean of each group
+
+phyla16S_summary
+
+phyla16S_summary$Substrate <- factor(phyla16S_summary$Substrate,
+                                 levels=c("L","B","S")) #reorder variables
+
+#phyla16S_summary$Wet.Dry <- factor(phyla16S_summary$Wet.Dry, levels= c("wet","dry")) #reorder variables
+phyla16S_summary$Major_Taxa <- factor(phyla16S_summary$Major_Taxa, levels= rev(c("Alphaproteobacteria","Gammaproteobacteria","Cyanobacteriota","Actinomycetota","Myxococcota","Verrucomicrobiota","Bacteroidota","Acidobacteriota","Bacillota","Planctomycetota","Thermodesulfobacteriota","Chloroflexota", "Thermoproteota","Other")))
+
+#color palette
+sublab<- c("Leaf litter","Epilithic biofilms","Benthic sediment")
+names(sublab)<- c("L","B","S")
+
+pal12 <- rev(cols25(n=14)) #set n= to the number of taxa you are plotting
+#make stacked bar plot
+phylum16S_bar <- ggplot(phyla16S_summary, aes(x = Classiification, y = mean_prop, fill = Major_Taxa))+
+  geom_bar(stat = "identity", col=I("black")) +
+  scale_fill_manual(values=pal12)+
+  guides(fill=guide_legend(ncol=1))+
+  facet_wrap(~Substrate, labeller = labeller(Substrate=sublab), nrow=1, scales="free_x") +
+  labs(x=NULL,y="Relative abundance (%)",
+       fill="Major taxa")+
+  #scale_facet_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment', 'W'='Surface water'))+
+  theme(axis.text.x = element_text(angle=60, hjust=1), legend.position = "right")+
+  theme(text=element_text(size=18), #change font size of all text
+        axis.text=element_text(size=16), #change font size of axis text
+        axis.title=element_text(size=16), #change font size of axis titles
+        plot.title=element_text(size=16), #change font size of plot title
+        legend.text=element_text(size=16), #change font size of legend text
+        strip.text.x = element_text(size = 16),
+        legend.title=element_text(size=16)) #change font size of legend title  
+phylum16S_bar
+ 
+#c(180,100) *
+#  0.0394 * # convert mm to inch
+#  600 # convert to pixels
+## [1] 4255.2 2364.0
+plotout <- "phylum16S_barplot__052125.tiff"
+agg_tiff(filename=plotout, width=4255, height=2364, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+phylum16S_bar
+invisible(dev.off())
+```
+##################################################
+
+##################################################
+
+
+#### 0.3.1.2
+### Fungal Taxonomy
+#### Fungal phyla and classes
+```{r}
+#make taxonomy object by phylum
+phylaITS_counts_tab <- otu_table(tax_glom(pseqtestITS, taxrank="Phylum"), taxa_are_rows = FALSE)
+phylaITS_counts_tab <- t(phylaITS_counts_tab)
+#make vector of phyla names to set as row names
+phylaITS_tax_vec <- as.vector(tax_table(tax_glom(pseqtestITS, taxrank="Phylum"))[,2]) 
+rownames(phylaITS_counts_tab) <- as.vector(phylaITS_tax_vec)
+phylaITS_counts_tab
+write.csv(phylaITS_counts_tab, 'phylaITS_counts_05.21.25.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtestITS@otu_table
+#determine the number of unclassified seqs at the phylum level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(phylaITS_counts_tab)
+#Add a row of "unclassified" to the phylum count table
+phylaITS_and_unidentified_counts_tab <- rbind(phylaITS_counts_tab, "Unclassified_Phylum"=unclassified_tax_counts)
+
+```
+
+### split Ascomycota
+
+```{r}
+#remove Proteobacteria for the purpose of separating it into classes later
+temp_majorITS_taxa_counts_tab <- 
+  phylaITS_and_unidentified_counts_tab[!row.names(phylaITS_and_unidentified_counts_tab)
+                                    %in% "Ascomycota",]
+#make count table broken down by class
+classITS_counts_tab <- otu_table(tax_glom(t(pseqtestITS), taxrank="Class"))
+#make table containing phylum and class data
+classITS_tax_phy_tab <- tax_table(tax_glom(t(pseqtestITS), taxrank="Class"))
+phy_tmp_vec <- classITS_tax_phy_tab[,2]
+classITS_tmp_vec <- classITS_tax_phy_tab[,3]
+rows_tmp <- row.names(classITS_tax_phy_tab)
+classITS_tax_tab <- data.frame("Phylum"=phy_tmp_vec, "Class"=classITS_tmp_vec, row.names = rows_tmp)
+#make vector of just the Proteobacteria classes
+Ascomycete_classes_vec <- as.vector(classITS_tax_tab[classITS_tax_tab$Phylum=="Ascomycota", "Class"])
+row.names(classITS_counts_tab) <- as.vector(classITS_tax_tab$Class)
+#make table of Proteobacteria classes
+Ascomycete_class_counts_tab <- classITS_counts_tab[row.names(classITS_counts_tab) %in% Ascomycete_classes_vec, ]
+#make table ofProteobacteria not identified to the class level
+Ascomycete_no_class_annotated_counts <- 
+  phylaITS_and_unidentified_counts_tab[row.names(phylaITS_and_unidentified_counts_tab) %in% "Ascomycota",]-
+  colSums(Ascomycete_class_counts_tab)
+#Now combine the tables
+majorITS_taxa_counts_tab <- rbind(temp_majorITS_taxa_counts_tab, Ascomycete_class_counts_tab,
+                               "Unclassified_Ascomycota"=Ascomycete_no_class_annotated_counts)
+head(majorITS_taxa_counts_tab)
+
+```
+
+
+```{r}
+write.csv(majorITS_taxa_counts_tab, "majorITStaxa_count_rar_ITS_05.21.25.csv")
+#Check that all sequences are accounted for
+identical(colSums(majorITS_taxa_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+majorITS_taxa_proportions_tab <- apply(majorITS_taxa_counts_tab, 2, function(x) x/sum(x)*100)
+#colSums(majorITS_taxa_proportions_tab)
+write.csv(majorITS_taxa_proportions_tab, "majorITStaxa_relative abundance_rar_ITS_05.21.25.csv")
+
+```
+
+
+by family
+```{r}
+#make taxonomy object by genus
+familyITS_counts_tab <- otu_table(tax_glom(pseqtestITS, taxrank="Family"), taxa_are_rows = FALSE)
+familyITS_counts_tab <- t(familyITS_counts_tab)
+#make vector of genus names to set as row names
+familyITS_tax_vec <- as.vector(tax_table(tax_glom(pseqtestITS, taxrank="Family"))[,5]) 
+rownames(familyITS_counts_tab) <- as.vector(familyITS_tax_vec)
+
+#determine the number of unclassified seqs at the family level
+unclassified_familyITS_counts <- colSums(t(asv_counts)) - colSums(familyITS_counts_tab)
+unclassified_familyITS_counts
+#Add a row of "unclassified" to the family count table
+familyITS_and_unidentified_counts_tab <- rbind(familyITS_counts_tab, 
+                                            "Unclassified_family"=unclassified_familyITS_counts)
+write.csv(familyITS_and_unidentified_counts_tab, "familyITS raw abundance_rar_ITS_05.21.25.csv")
+#Check that all seqs are accounted for.
+
+identical(colSums(familyITS_and_unidentified_counts_tab), rowSums(asv_counts))
+
+#Convert totals to relative abundance
+familyITS_proportions_tab <- apply(familyITS_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(familyITS_proportions_tab, "family relative abundance_rar_ITS_05.21.25.csv")
+
+```
+
+
+```{r}
+#Merge metadata, phylum, and family abundances
+#phy_and_fam <- merge(t(majorITS_taxa_counts_tab), t(family_and_unidentified_counts_tab),
+#                  by="row.names", all=TRUE)
+phy_and_fam <- merge(t(majorITS_taxa_proportions_tab), t(familyITS_proportions_tab),
+                  by="row.names", all=TRUE)
+phyfam <- phy_and_fam[,-1]
+rownames(phyfam) <- phy_and_fam[,1]
+tax_merge <- merge(samdf_ITS, phyfam,
+                  by="row.names", all=TRUE)
+taxmergeITS <- tax_merge[,-1]
+rownames(taxmergeITS) <- tax_merge[,1]
+write.csv(tax_merge, "TALSYN_taxmergeITS_05.21.25.csv")
+
+```
+
+###Phylum-Class BARPLOT
+```{r}
+#majorITS taxa, mean percent abundances across all samples:
+rowMeans(majorITS_taxa_proportions_tab)
+
+#Select taxa that make up >90% of the total sequences
+
+phylaITStrim <- data.frame(majorITS_taxa_proportions_tab[c("Basidiomycota","Mucoromycota","Mortierellomycota","Rozellomycota","Leotiomycetes","Dothideomycetes","Sordariomycetes","Eurotiomycetes","Lecanoromycetes","Unclassified_Ascomycota","Unclassified_Phylum"), ])
+
+#Create an "other" category for the phyla not retained
+filtered_proportions <- colSums(majorITS_taxa_proportions_tab) - 
+  colSums(phylaITStrim)
+phylaITStrim <- rbind(phylaITStrim, "Other"=filtered_proportions)
+phylaITStrim
+
+#Add taxa names as a column
+phylaITStrim$Major_Taxa <- row.names(phylaITStrim)
+#transform into long format
+phylaITSlong <- gather(phylaITStrim, Sample, Proportion, -Major_Taxa)
+phylaITSlong$Sample <- gsub("X","",phylaITSlong$Sample)
+
+```
+
+```{r}
+## [1] "substrate" "WetDry"
+phylaITSmet<-data.frame("Sample"=row.names(samdf_ITS),
+                     "Substrate"=samdf_ITS$substrate,
+                     "Classiification"=samdf_ITS$class_state,
+                     stringsAsFactors=T)
+#merge metadata with major taxa data
+phylaITSlong <- merge(phylaITSlong, phylaITSmet)
+#Summarize by depth and hydration
+phylaITS_summary <- 
+  phylaITSlong %>% # the names of the new data frame and the data frame to be summarised
+  group_by(Substrate, Classiification, Major_Taxa) %>%   # the grouping variable
+  summarise(mean_prop = mean(Proportion))  # calculates the mean of each group
+
+phylaITS_summary
+
+phylaITS_summary$Substrate <- factor(phylaITS_summary$Substrate,
+                                 levels=c("L","B","S")) #reorder variables
+
+#phylaITS_summary$Wet.Dry <- factor(phylaITS_summary$Wet.Dry, levels= c("wet","dry")) #reorder variables
+phylaITS_summary$Major_Taxa <- factor(phylaITS_summary$Major_Taxa, levels= rev(c("Basidiomycota","Mucoromycota","Mortierellomycota","Rozellomycota","Leotiomycetes","Dothideomycetes","Sordariomycetes","Eurotiomycetes","Lecanoromycetes","Unclassified_Ascomycota","Unclassified_Phylum","Other")))
+
+#color palette
+sublab<- c("Leaf litter","Epilithic biofilms","Benthic sediment")
+names(sublab)<- c("L","B","S")
+
+pal12 <- rev(cols25(n=12)) #set n= to the number of taxa you are plotting
+#make stacked bar plot
+phylumITS_bar <- ggplot(phylaITS_summary, aes(x = Classiification, y = mean_prop, fill = Major_Taxa))+
+  geom_bar(stat = "identity", col=I("black")) +
+  scale_fill_manual(values=pal12)+
+  guides(fill=guide_legend(ncol=1))+
+  facet_wrap(~Substrate, labeller = labeller(Substrate=sublab), nrow=1, scales="free_x") +
+  labs(x=NULL,y="Relative abundance (%)",
+       fill="Major taxa")+
+  #scale_facet_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment', 'W'='Surface water'))+
+  theme(axis.text.x = element_text(angle=60, hjust=1), legend.position = "right")+
+  theme(text=element_text(size=18), #change font size of all text
+        axis.text=element_text(size=16), #change font size of axis text
+        axis.title=element_text(size=16), #change font size of axis titles
+        plot.title=element_text(size=16), #change font size of plot title
+        legend.text=element_text(size=16), #change font size of legend text
+        strip.text.x = element_text(size = 16),
+        legend.title=element_text(size=16)) #change font size of legend title  
+phylumITS_bar
+ 
+#c(180,100) *
+#  0.0394 * # convert mm to inch
+#  600 # convert to pixels
+## [1] 4255.2 2364.0
+plotout <- "phylumITS_barplot__052125.tiff"
+agg_tiff(filename=plotout, width=4255, height=2364, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+phylumITS_bar
+invisible(dev.off())
+```
+```{r}
+library(cowplot)
+spacer<- ggdraw()
+plotout <- "taxa-2-panel_05-22-2025.tiff"
+agg_tiff(filename=plotout, width=4255, height=4728, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(phylum16S_bar,spacer, phylumITS_bar,rel_heights = c(1,0.05,1) , labels=c('A','','B'),label_size = 18, ncol = 1)
+invisible(dev.off())
+```
+
+
+##
+
+```{r}
+library(rstatix)
+stat.test <- kingmerge %>%
+wilcox_test(Archaea~substrate) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- kingmerge %>%
+  wilcox_effsize(Archaea~substrate)
+effsize
+
+cor_summary <- taxmerge16S[!is.na(taxmerge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteriaceae, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Methanobacteriaceae, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- taxmerge16S[!is.na(taxmerge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteriaceae, CH4_avg, method = "spearman"),
+    p_value = cor.test(Methanobacteriaceae, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+```
+
+## Class merge
+#### Prokaryote phyla and classes
+
+```{r}
+#make taxonomy object by phylum
+class16S_counts_tab <- otu_table(tax_glom(pseqtest16S, taxrank="Class"), taxa_are_rows = FALSE)
+class16S_counts_tab <- t(class16S_counts_tab)
+#make vector of phyla names to set as row names
+class16S_counts_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Class"))[,3]) 
+rownames(class16S_counts_tab) <- as.vector(class16S_counts_vec)
+class16S_counts_tab
+write.csv(class16S_counts_tab, 'class16S_counts_05.28.25.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtest16S@otu_table
+## determine the number of unclassified seqs at the class level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(class16S_counts_tab)
+## Add a row of "unclassified" to the phylum count table
+class16S_and_unidentified_counts_tab <- rbind(class16S_counts_tab, "Unclassified_Class"=unclassified_tax_counts)
+
+```
+
+```{r}
+#Check that all sequences are accounted for
+identical(colSums(class16S_and_unidentified_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+class16S_proportions_tab <- apply(class16S_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(class16S_proportions_tab, "class16S_proportions_tab_05.21.25.csv")
+
+```
+
+```{r}
+class_merge16S <- merge(samdf_16S, t(class16S_proportions_tab),
+                  by="row.names", all=TRUE)
+rownames(class_merge16S) <- class_merge16S[,1]
+class_merge16S <- class_merge16S[,-1]
+
+write.csv(class_merge16S, "TALSYN_classmerge16S_05.28.25.csv")
+
+rowMeans(class16S_proportions_tab)
+
+```
+Cyanobacteriia
+```{r}
+library(rstatix)
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month)&class_merge16S$substrate=='B',] %>%
+  #group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Cyanobacteriia, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Cyanobacteriia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month)&class_merge16S$substrate=='B',] %>%
+  #group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(B_Chla, percentwet_11month, method = "spearman"),
+    p_value = cor.test(B_Chla, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month)&!is.na(class_merge16S$W_Chla)&class_merge16S$substrate=='L',] %>%
+  #group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(W_Chla, percentwet_11month, method = "spearman"),
+    p_value = cor.test(W_Chla, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+```
+
+
+Based on https://doi.org/10.1128/aem.02247-23 
+Known methanogenic classes of Archaea include Thermoplasmia (Thermoplasmata), Methanobacteriia (Methanobacteria), Methanocellia, Methanonatronarchaeia, Methanomicrobia, Metanephric, and Methanococci 
+
+```{r}
+library(rstatix)
+
+## Methanogenic Archaea classes present in our study
+# Methanobacteria; Methanomicrobia; Thermoplasmata; Methanocellia; Methanomethylicia; Methanosarcinia
+
+## non-methanogeenix archaea: Nitrososphaeria
+
+## Methanobacteria
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanobacteria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanobacteria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomicrobia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanomicrobia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanomicrobia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Thermoplasmata
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Thermoplasmata, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Thermoplasmata, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanocellia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanocellia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanocellia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomethylicia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanomethylicia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanomethylicia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanosarcinia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanosarcinia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanosarcinia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+
+###Nitrososphaeria
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, CH4_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$N2Ar_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, N2Ar_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, N2Ar_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$N2O_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, N2O_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, N2O_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$CO2_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, CO2_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, CO2_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$O2_uM_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, O2_uM_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, O2_uM_avg, method = "spearman")$p.value
+  )
+cor_summary
+```
+
+Archaeal class in sediment only, with bonferonni correction
+```{r}
+class_merge16S_S<- class_merge16S[class_merge16S$substrate=='S',]
+
+## Methanobacteria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanobacteria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomicrobia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanomicrobia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+## Thermoplasmata
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Thermoplasmata, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanocellia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanocellia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomethylicia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanomethylicia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanosarcinia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanosarcinia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+###Nitrososphaeria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Nitrososphaeria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+##### METHANE #######################
+## Methanobacteria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanobacteria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomicrobia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanomicrobia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Thermoplasmata
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Thermoplasmata, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanocellia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanocellia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomethylicia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanomethylicia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanosarcinia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanosarcinia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+###Nitrososphaeria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Nitrososphaeria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+```
+
+```{r}
+pseqtest16Sarch<- subset_taxa(pseqtest16S, Kingdom=="Archaea")
+#make taxonomy object by phylum
+class16Sarch_counts_tab <- otu_table(tax_glom(pseqtest16Sarch, taxrank="Class"), taxa_are_rows = FALSE)
+class16Sarch_counts_tab <- t(class16Sarch_counts_tab)
+#make vector of phyla names to set as row names
+class16Sarch_counts_vec <- as.vector(tax_table(tax_glom(pseqtest16Sarch, taxrank="Class"))[,3]) 
+rownames(class16Sarch_counts_tab) <- as.vector(class16Sarch_counts_vec)
+class16Sarch_counts_tab
+write.csv(class16Sarch_counts_tab, 'class16Sarch_counts_05.28.25.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtest16Sarch@otu_table
+## determine the number of unclassified seqs at the class level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(class16Sarch_counts_tab)
+## Add a row of "unclassified" to the phylum count table
+class16Sarch_and_unidentified_counts_tab <- rbind(class16Sarch_counts_tab, "Unclassified_Class"=unclassified_tax_counts)
+
+```
+
+```{r}
+#Check that all sequences are accounted for
+identical(colSums(class16Sarch_and_unidentified_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+class16Sarch_proportions_tab <- apply(class16Sarch_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(class16Sarch_proportions_tab, "class16Sarch_proportions_tab_05.21.25.csv")
+
+class16Sarch_proportions_tab<-class16Sarch_proportions_tab[,!is.na(colSums(class16Sarch_proportions_tab)>0)]
+#class16Sarch_proportions_tab<-class16Sarch_proportions_tab[,!is.na(colSums(class16Sarch_proportions_tab))]
+rowMeans(class16Sarch_proportions_tab)
+
+```
+
+```{r}
+samdf_16Sarch<- sam_data(pseqtest16Sarch)
+class_merge16Sarch <- merge(samdf_16Sarch, t(class16Sarch_proportions_tab),
+                  by="row.names", all=TRUE)
+rownames(class_merge16Sarch) <- class_merge16Sarch[,1]
+class_merge16Sarch <- class_merge16Sarch[,-1]
+
+write.csv(class_merge16Sarch, "TALSYN_classmerge16Sarch_05.28.25.csv")
+## detatch linkET package, it interferes with downstream stats
+
+```
+
+Ephemeral sediment Basidiomycota:
+taxmergeITS
+```{r}
+taxmergeITS_S<- taxmergeITS[taxmergeITS$substrate=='S',]
+
+taxmergeITS_Seph<- taxmergeITS_S[taxmergeITS_S$int_eph=='ephemeral',]
+
+mean(taxmergeITS_Seph$Basidiomycota)
+sd(taxmergeITS_Seph$Basidiomycota)
+
+stat.test <- taxmergeITS_S %>%
+wilcox_test(Basidiomycota~int_eph) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <-  taxmergeITS_S %>%
+  wilcox_effsize(Basidiomycota~int_eph)
+effsize
+
+
+## Basidiomycota
+cor_summary <- taxmergeITS_S[!is.na(taxmergeITS_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Basidiomycota, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Basidiomycota, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+
+```
