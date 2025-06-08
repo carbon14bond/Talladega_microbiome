@@ -11,16 +11,19 @@ This project is composed of three main components:
    - Combining environmental / hydrographic / biogeochemistry / microbial metadata into a single metadata table for downstream analyses.
    - Map preparation, making the map of the watershed / stream network / sampling sites. 
 2) Bioinformatics pipelines
-   - dada2 pipelines for 16S V4 (prokaryotes) and ITS (fungi) to generate ASV counts and taxonomy
-   - DECIPHER classifier training for ITS to help improve taxonomy assignment for fungi.
-3) Data analysis (statistical tests and figure generation).
-   - Analysis divided into multiple sections:
-     - 0.1: ASV occurence summary and rarefaction for downstream analyses
-     - 0.2: Diversity and community composition across the stream continuum
-     - 0.3: Taxonomic groups across the stream continuum
-     - 0.4: Functional groups across the stream continuum
+   - dada2 pipelines generating ASV counts and taxonomy:
+       - 16S V4 (prokaryotes)
+       - ITS (fungi)
+          - DECIPHER classifier training for ITS to help improve taxonomy assignment for fungi.
+3) Data analysis (processing, statistical tests, and figure generation).
+   - Analyses divided into multiple sections (With corresponding Rmarkdown files):
+     - 0.1: Overview and rarefaction (summarizing ASV count data and rarefying for downstream analyses).
+     - 0.2: Community Composition Analysis (alpha and beta diversity tests, NMDS, Mantel, etc).
+     - 0.3: Kingdoms, Phyla, and Classes across stream continuum.
+     - 0.4: Genera and species across stream continuum.
+     - 0.5: Predicted genes (PICRUSt2) across stream continuum.
   
-This repository is a work in progress and does not yet contain all code or data.
+This repository is a work in progress and may not yet contain all code or data.
 
 ## Introduction
 Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
@@ -45,7 +48,16 @@ Where needed, references are provided in-line with code for data sources that mu
 
 - NCBI for sequencing data (TBD)
 
-### Preliminary analysis
+### Analyses
+The `Analysis` folder contains files needed to replicate all analyses. 
+For both 16S and ITS datasets, phyloseq objects containing rarefied count data, taxonomy, and metadata were saved as Rdata files and are availble in the `Analysis` folder. These can be used with the `Analysis` Rmarkdown files to replicate all teests and figures. 
+Analysis:
+- 0.1: Overview and rarefaction (summarizing ASV count data and rarefying for downstream analyses).
+- 0.2: Community Composition Analysis (alpha and beta diversity tests, NMDS, Mantel, etc).
+- 0.3: Kingdoms, Phyla, and Classes across stream continuum.
+- 0.4: Genera and species across stream continuum.
+- 0.5: Predicted genes (PICRUSt2) across stream continuum.
+
 Leaf litter, rock surfaces, and sediments differed in both prokaryotic and fungal community composition. 
 ![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/overview-05-21-2025_orig.png)
 Figure 2) For prokaryotes and fungi, ASV accumulations curves for each substrate across all sites, Venn diagrams showing unique ASVs occurring in substrates, and NMDS plots showing difference between substrates and between intermittent and ephemeral sites. 
