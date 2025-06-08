@@ -1,0 +1,291 @@
+---
+title: "Analysis_0.5_functional_traits"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Microbial Community Analysis: Talladega Forest Non-perennial Stream Network
+
+## Analysis_0.5: Functional (PICRUSt2 predicted gene relative abundance) analysis
+
+### Introduction
+This code(0.5) will generate figures and tests to look for patterns in PICRUSt2-based functional traits (predicted relative abunance of functionally important genes). First we will use the MetaCyc outputs of PICRUSt2 to look for trends in broad functional pathways (photosynthesis, methanogenesis, and various aerobic and anaerobic heterotrophic pathways). Then we wil use KEGG orthology for specific genes aassociatedd with different steps in denitrification. 
+
+
+### Setup
+```{r, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/chunk/Talladega_synoptic")
+knitr::opts_knit$set(root.dir = "/Users/chunk/Talladega_synoptic/Analysis")
+options(knitr.duplicate.label = "allow") ### so I don't have to give chunks unique names
+```
+
+```{r}
+### loading libraries
+library(readr)
+library(ggpicrust2)
+library(tibble)
+library(tidyverse)
+library(ggprism)
+library(patchwork)
+### loading metadata
+metadata_full <- read.csv("meta_sub_05.12.2025.csv", row.names=1)
+metadata_full$substrate <- as.factor(metadata_full$substrate)
+
+```
+
+
+### METACYC
+##### Selected pathways representing diversion metabolisms
+Photoautotrophy (sucrose synthesis): SUCSYN-PWY        
+Bacteriochlorophyll biosynthesis (Photoautotrophy): PWY-5531    
+Chlorophyllide-a biosynthesis (Photoautotrophy):  PWY-7159
+Chlorophyll synthesis: CHLOROPHYLL-SYN
+Complete reductive TCA (autotrophy): P23-PWY
+Incomplete reductive TCA (methanogenic autotrophy): P42-PWY
+Methanogenesis: METHANOGENESIS-PWY
+Methyltrophy: PWY-1882   
+Glycolysis: GLYCOLYSIS
+Glucose and Xylose Degradation: PWY-6901  
+Heterolactic Fermentation: P122-PWY    
+Homolactic Fermentation: 	ANAEROFRUCAT-PWY
+Denitrification (overall): DENITRIFICATION-PWY
+Sulfur oxidation: PWY-5304
+
+
+```{r}
+setwd('/Users/chunk/Talladega_synoptic/picrust2')
+
+#load pathway counts and ASV counts
+pathway_abundance <- as.data.frame(read_tsv("/Users/chunk/Talladega_synoptic/Analysis/picrust2/picrust2_out_pipeline/pathways_out/path_abun_unstrat.tsv"))
+row.names(pathway_abundance)<- pathway_abundance[,1]
+pathway_abundance<-pathway_abundance[,-1]
+pathway_abundance<-as.data.frame(t(pathway_abundance))
+
+### extract ecologically relevant metabolic groups
+eco_path <- pathway_abundance[,c("SUCSYN-PWY",
+                                 "PWY-5531",
+                                 "PWY-7159",
+                                 "CHLOROPHYLL-SYN",
+                                 "P23-PWY",
+                                 "P42-PWY",
+                                 "METHANOGENESIS-PWY",
+                                 "PWY-1882",
+                                 "GLYCOLYSIS",
+                                 "PWY-6901",
+                                 "P122-PWY",
+                                 "ANAEROFRUCAT-PWY",
+                                 "DENITRIFICATION-PWY",
+                                 "PWY-5304")]
+
+ecotab<- merge(metadata_full, eco_path, by= 'row.names')
+row.names(ecotab)<- ecotab[,1]
+ecotab<-ecotab[,-1]
+
+### removing the beaver pond as an outlier
+ecotab<- ecotab[ecotab$siteId!='TLMBP',]
+
+## we want full 11 month percent wet data
+ecotab<- ecotab[!is.na(ecotab$percentwet_11month),]
+ecotab_S<- ecotab[ecotab$substrate=='S',]
+ecotab_L<- ecotab[ecotab$substrate=='L',]
+ecotab_B<- ecotab[ecotab$substrate=='B',]
+
+```
+
+### MetaCyc pathways GLLVM by microhabitat
+Sediment
+```{r}
+library(stringr)
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+eco_abun<-ecotab_S[,101:114]
+X <- as.matrix(ecotab_S[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(eco_abun))
+colnames(y)
+## impoving interperetability of colnames for pathways with only numbered label
+pwyname<- c("Sucrose synthesis (SUCSYN-PWY)", "Bacteriochlorophyll biosynthesis (PWY-5531)", "Chlorophyllide-a biosynthesis (PWY-7159)", "CHLOROPHYLL-SYN", "Complete reductive TCA (P23-PWY)", "Incomplete reductive TCA (P42-PWY)", "METHANOGENESIS-PWY", "Methyltrophy (PWY-1882)","GLYCOLYSIS","Glucose and Xylose Degradation (PWY-6901)", "Heterolactic Fermentation (P122-PWY)", "Homolactic Fermentation (ANAEROFRUCAT-PWY)", "DENITRIFICATION-PWY", "Sulfur oxidation (PWY-5304)")
+colnames(y)<-pwyname
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_MetaCyc_S_plot.pdf", 
+    )
+gllvm_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm_S
+dev.off()
+```
+
+Leaf
+```{r}
+library(stringr)
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+eco_abun<-ecotab_L[,101:114]
+X <- as.matrix(ecotab_L[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(eco_abun))
+colnames(y)
+## impoving interperetability of colnames for pathways with only numbered label
+pwyname<- c("Sucrose synthesis (SUCSYN-PWY)", "Bacteriochlorophyll biosynthesis (PWY-5531)", "Chlorophyllide-a biosynthesis (PWY-7159)", "CHLOROPHYLL-SYN", "Complete reductive TCA (P23-PWY)", "Incomplete reductive TCA (P42-PWY)", "METHANOGENESIS-PWY", "Methyltrophy (PWY-1882)","GLYCOLYSIS","Glucose and Xylose Degradation (PWY-6901)", "Heterolactic Fermentation (P122-PWY)", "Homolactic Fermentation (ANAEROFRUCAT-PWY)", "DENITRIFICATION-PWY", "Sulfur oxidation (PWY-5304)")
+colnames(y)<-pwyname
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_MetaCyc_L_plot.pdf", 
+    )
+gllvm_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm_L
+dev.off()
+```
+ 
+Rock
+```{r}
+library(stringr)
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+eco_abun<-ecotab_B[,101:114]
+X <- as.matrix(ecotab_B[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(eco_abun))
+colnames(y)
+## impoving interperetability of colnames for pathways with only numbered label
+pwyname<- c("Sucrose synthesis (SUCSYN-PWY)", "Bacteriochlorophyll biosynthesis (PWY-5531)", "Chlorophyllide-a biosynthesis (PWY-7159)", "CHLOROPHYLL-SYN", "Complete reductive TCA (P23-PWY)", "Incomplete reductive TCA (P42-PWY)", "METHANOGENESIS-PWY", "Methyltrophy (PWY-1882)","GLYCOLYSIS","Glucose and Xylose Degradation (PWY-6901)", "Heterolactic Fermentation (P122-PWY)", "Homolactic Fermentation (ANAEROFRUCAT-PWY)", "DENITRIFICATION-PWY", "Sulfur oxidation (PWY-5304)")
+colnames(y)<-pwyname
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_MetaCyc_B_plot.pdf", 
+    )
+gllvm_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm_B
+dev.off()
+```
+ 
+
+ 
+ ########################################################
+ 
+
+# KEGG Orthology for more in-depth look at denitrification. 
+## The twelve KO identifiers for denitrification genes:
+The 12 genes and associated KEGG Orthology Identifiers are narG (K00370), narH (K00371), narI (K00374), napA (K02567), napB (K02568), nirK (K00368), nirS (K15864), norB (K04561), norC (K02305), norV (K12264), norW (K12265), and nosZ (K00376). 
+More details from Isokpehi eet al. https://doi.org/10.3390/microorganisms12040791 
+K00370	nitrate reductase/nitrite oxidoreductase, alpha subunit	narG
+K00371	nitrate reductase/nitrite oxidoreductase, beta subunit	narH
+K00374	nitrate reductase gamma subunit	narI
+K02567	nitrate reductase (cytochrome)	napA
+K02568	nitrate reductase (cytochrome), electron transfer subunit	napB
+K00368	nitrite reductase (NO-forming)	nirK
+K15864	nitrite reductase (NO-forming)/hydroxylamine reductase	nirS
+K04561	nitric oxide reductase subunit B	norB
+K02305	nitric oxide reductase subunit C	norC
+K12264	anaerobic nitric oxide reductase flavorubredoxin	norV
+K12265	nitric oxide reductase FlRd-NAD(+) reductase	norW
+K00376	nitrous-oxide reductase	nosZ
+```{r}
+setwd('/Users/chunk/Talladega_synoptic/picrust2')
+
+#load pathway counts and ASV counts
+pathway_abundance <- as.data.frame(read_tsv("/Users/chunk/Talladega_synoptic/Analysis/picrust2/picrust2_out_pipeline/KO_metagenome_out/pred_metagenome_unstrat.tsv"))
+
+rownames(pathway_abundance)<-pathway_abundance$`function`
+pathway_abundance<-pathway_abundance[,-1]
+pathway_abundance<- as.data.frame(t(pathway_abundance))
+
+keggabun<- cbind("narG (K00370)"=pathway_abundance$K00370,
+                                "narH (K00371)"=pathway_abundance$K00371,
+                                "narI (K00374)"=pathway_abundance$K00374,
+                                "napA (K02567)"=pathway_abundance$K02567,
+                                "napB (K02568)"=pathway_abundance$K02568,
+                                "nirK (K00368)"=pathway_abundance$K00368,
+                                "nirS (K15864)"=pathway_abundance$K15864,
+                                "norB (K04561)"=pathway_abundance$K04561,
+                                "norC (K02305)"=pathway_abundance$K02305,
+                                "norV (K12264)"=pathway_abundance$K12264,
+                                "norW (K12265)"=pathway_abundance$K12265,
+                                "nosZ (K00376)"=pathway_abundance$K00376)
+rownames(keggabun)<-rownames(pathway_abundance)
+
+ecotab<- merge(metadata_full, keggabun, by= 'row.names')
+row.names(ecotab)<- ecotab$Row.names
+ecotab$substrate<- as.factor(ecotab$substrate)
+ecotab[,102:113]<- ecotab[,102:113] %>% mutate_if(is.character,as.numeric)
+
+```
+
+```{r}
+ecotab[,102:113]
+ecotabS<- ecotab[ecotab$substrate=="S"&!is.na(ecotab$percentwet_11month),]
+
+library(linkET)
+correlate(ecotabS[,102:113], ecotabS[,c(82:83,88:89)]) %>% 
+  qcorrplot() +
+  geom_square() +
+    geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+            only_mark = TRUE)+
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
+  xlab(label="")+
+  ylab(label="")
+```
+```{r}
+library(linkET)
+ecotabS<- ecotab[ecotab$substrate=="S"&!is.na(ecotab$percentwet_11month)&!is.na(ecotab$CH4_avg),]
+
+adjust_pvalue(correlate(ecotabS[,102:113], ecotabS[,c(65,75,89)]),method = "holm") %>% 
+  qcorrplot() +
+  geom_square() +
+    geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+            only_mark = TRUE)+
+  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
+  xlab(label="")+
+  ylab(label="")+
+  ggtitle(label="Sediments (n=31)")
+```
+
+
+
+
+

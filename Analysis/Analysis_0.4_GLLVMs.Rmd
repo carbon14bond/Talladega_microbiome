@@ -1,0 +1,470 @@
+---
+title: "Analysis_0.4_Gen.spp.GLLVMs"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Microbial Community Analysis: Talladega Forest Non-perennial Stream Network
+
+## Analysis_0.4: Microbial taxa across the stream network
+
+### Introduction
+Following the analysis and visualization of major phyla and class of microbess in Analysis 0.3, we will now look into the taxonomic groups of prokaryotes and fungi occuring in the stream. See the next analysis (0.5) for generalized linear latent variable models for top genera, species, or PICRUSt2-based functional trait assignment.
+
+## Setup
+```{r, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/chunk/Talladega_synoptic/Analysis")
+knitr::opts_knit$set(root.dir = "/Users/chunk/Talladega_synoptic/Analysis")
+options(knitr.duplicate.label = "allow") ### so I don't have to give chunks unique names
+```
+
+```{r}
+#library(dada2)
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(pheatmap)
+library(GUniFrac)
+library(pals)
+library(RColorBrewer)
+library(ragg)
+library(ggpubr)
+
+#Set theme
+theme_set(theme_bw() + theme(
+              plot.title = element_text(size=20, color="black"),
+              axis.text.x = element_text(size=15, color="black"),
+              axis.text.y = element_text(size=15, color="black"),
+              axis.title.x = element_text(size=15),
+              axis.title.y = element_text(size=15),
+              legend.text = element_text(size=12),
+              legend.title = element_text(size=15),
+            #  legend.position = "bottom",
+            #  legend.key=element_blank(),
+            #  legend.key.size = unit(0.5, "cm"),
+            #  legend.spacing.x = unit(0.1, "cm"),
+            #  legend.spacing.y = unit(0.1, "cm"),
+              panel.background = element_blank(), 
+              #panel.border = element_rect(colour = "black", fill=NA, size=1),
+              plot.background = element_blank()))
+```
+
+## Load phyloseq objects
+```{r}
+#prokaryotes
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtest16S.rdata")
+pseqtest16S
+
+#fungi
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtestITS.rdata")
+pseqtestITS
+
+## Cutting the single beaver pond site, its an outlier, the only permanent lentic site
+pseqtest16S <- subset_samples(pseqtest16S, siteId != "TLMBP")
+pseqtestITS <- subset_samples(pseqtestITS, siteId != "TLMBP")
+
+# extract sampe data
+samdf_16S <- data.frame(sample_data(pseqtest16S))
+samdf_ITS <- data.frame(sample_data(pseqtestITS))
+```
+
+
+
+# Top prokaryotic ASVs/spp
+
+In the past I've lumped taxa to the gens level for corrplots, but I see some aquatic hyphomycete genus standing out that I'd like to keep at the genus level. So, I will make a new object combining
+```{r}
+pseqtest16S_gen <- pseqtest16S
+### If Species == NA, rename 'gen.'. We will merge these, so potentially multiple genus may be merged together.
+#na.sp = !is.na(tax_table(pseqtest16S_gen)[,"Genus"]) & is.na(tax_table(pseqtest16S_gen)[,"Species"])
+#tax_table(pseqtest16S_gen)[na.sp][,"Species"] <- "sp. unk."
+#na.gn  = is.na(tax_table(pseqtest16S_gen)[,"Genus"])#
+#tax_table(pseqtest16S_gen)[na.gn][,"Species"] <- ""
+### good
+
+### Now, make "Species" "Genus genus"
+## Genus and Species is not NA
+#no.na <- !is.na(tax_table(pseqtest16S_gen)[,"Genus"]) & !is.na(tax_table(pseqtest16S_gen)[,"Species"])
+## Replace Species with full name
+#tax_table(pseqtest16S_gen)[no.na][,"Species"] <- paste(tax_table(pseqtest16S_gen)[no.na][,"Genus"], tax_table(pseqtest16S_gen)[no.na][,"Species"])
+
+## We could also include unidentified families or higher levels
+### family
+#lo.fam<- !is.na(tax_table(pseqtest16S_gen)[,"Family"]) & is.na(tax_table(pseqtest16S_gen)[,"Genus"])
+#tax_table(pseqtest16S_gen)[lo.fam][,"Species"] <- paste("unidentified", tax_table(pseqtest16S_gen)[lo.fam][,"Family"])
+
+```
+
+Now we will agglomerate ('lump') taxa to the lowest rank possible.
+```{r}
+### genus agglomeration
+## make taxonomy object by genus
+gen_counts_tab <- otu_table(tax_glom(pseqtest16S_gen, taxrank = "Genus"), taxa_are_rows = FALSE)
+gen_counts_tab <- t(gen_counts_tab)
+## make vector of genus names to set as row names
+gen_tax_vec <- as.vector(tax_table(tax_glom(pseqtest16S_gen, taxrank="Genus"))[,6]) 
+rownames(gen_counts_tab) <- as.vector(gen_tax_vec)
+
+asv_counts <- pseqtest16S_gen@otu_table
+#determine the number of unclassified seqs at the genus level
+unclassified_gen_counts <- colSums(t(asv_counts)) - colSums(gen_counts_tab)
+#Add a row of "unclassified" to the genus count table
+genus_and_unidentified_counts_tab <- rbind(gen_counts_tab, "Unclassified_genus"=unclassified_gen_counts)
+
+## test all counts are accounted for
+identical(colSums(genus_and_unidentified_counts_tab), rowSums(asv_counts))
+
+## convert counts to percent abundance:
+genus_proportions <- apply(genus_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+
+#Merge with metadata
+genus_merge <- merge(t(genus_proportions), samdf_16S,
+                  by="row.names", all=TRUE)
+rownames(genus_merge) <- genus_merge[,1]
+genus_merge <- genus_merge[,-1]
+gn<- as.numeric(nrow(genus_proportions))
+```
+
+#### Leaf Litter Species at sites with stic data
+```{r}
+library(stringr)
+genmerge_L<- genus_merge[genus_merge$substrate=='L',]
+genmerge_L<- genmerge_L[!is.na(genmerge_L$percentwet_11month),]
+gentemp_L<- genmerge_L[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+gentemp_L <- gentemp_L[,order(colSums(-gentemp_L,na.rm=TRUE))]
+gentemp_L <- gentemp_L[,apply(gentemp_L,2,function(x) sum(x > 0))>1]
+
+
+genmerge_L <- merge(gentemp_L, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(genmerge_L) <- genmerge_L[,1]
+genmerge_L <- genmerge_L[,-1]
+genmerge_L<- genmerge_L[,colnames(genmerge_L)!="Unclassified_genus"]
+
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+L_abun<-genmerge_L[,1:40]
+X <- as.matrix(genmerge_L[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(L_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_LL_plot.pdf", 
+    )
+gllvm16S_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_L
+dev.off()
+```
+
+#### Epilithon Species at sites with stic data
+```{r}
+library(stringr)
+genmerge_B<- genus_merge[genus_merge$substrate=='B',]
+genmerge_B<- genmerge_B[!is.na(genmerge_B$percentwet_11month),]
+gentemp_B<- genmerge_B[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+gentemp_B <- gentemp_B[,order(colSums(-gentemp_B,na.rm=TRUE))]
+gentemp_B <- gentemp_B[,apply(gentemp_B,2,function(x) sum(x > 0))>1]
+
+
+genmerge_B <- merge(gentemp_B, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(genmerge_B) <- genmerge_B[,1]
+genmerge_B <- genmerge_B[,-1]
+genmerge_B<- genmerge_B[,colnames(genmerge_B)!="Unclassified_genus"]
+
+B_abun<-genmerge_B[,1:40]
+X <- as.matrix(genmerge_B[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(B_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_BB_plot.pdf", 
+    )
+gllvm16S_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_B
+dev.off()
+```
+
+#### Sediment Species at sites with stic data
+```{r}
+library(stringr)
+genmerge_S<- genus_merge[genus_merge$substrate=='S',]
+genmerge_S<- genmerge_S[!is.na(genmerge_S$percentwet_11month),]
+gentemp_S<- genmerge_S[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+gentemp_S <- gentemp_S[,order(colSums(-gentemp_S,na.rm=TRUE))]
+gentemp_S <- gentemp_S[,apply(gentemp_S,2,function(x) sum(x > 0))>1]
+
+
+genmerge_S <- merge(gentemp_S, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(genmerge_S) <- genmerge_S[,1]
+genmerge_S <- genmerge_S[,-1]
+genmerge_S<- genmerge_S[,colnames(genmerge_S)!="Unclassified_genus"]
+
+S_abun<-genmerge_S[,1:40]
+X <- as.matrix(genmerge_S[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(S_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_SS_plot.pdf", 
+    )
+gllvm16S_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_S
+dev.off()
+```
+
+
+###############################################
+# Top Fungal ASVs/spp
+
+In the past I've lumped taxa to the gens level for corrplots, but I see some aquatic hyphomycete species standing out that I'd like to keep at the species level. So, I will make a new object combining
+```{r}
+pseqtestITS_spp <- pseqtestITS
+### If Species == NA, rename 'spp.'. We will merge these, so potentially multiple species may be merged together.
+na.sp = !is.na(tax_table(pseqtestITS_spp)[,"Genus"]) & is.na(tax_table(pseqtestITS_spp)[,"Species"])
+tax_table(pseqtestITS_spp)[na.sp][,"Species"] <- "sp. unk."
+na.gn  = is.na(tax_table(pseqtestITS_spp)[,"Genus"])
+tax_table(pseqtestITS_spp)[na.gn][,"Species"] <- ""
+### good
+
+### Now, make "Species" "Genus species"
+## Genus and Species is not NA
+no.na <- !is.na(tax_table(pseqtestITS_spp)[,"Genus"]) & !is.na(tax_table(pseqtestITS_spp)[,"Species"])
+## Replace Species with full name
+tax_table(pseqtestITS_spp)[no.na][,"Species"] <- paste(tax_table(pseqtestITS_spp)[no.na][,"Genus"], tax_table(pseqtestITS_spp)[no.na][,"Species"])
+
+## We could also include unidentified families or higher levels
+### family
+#lo.fam<- !is.na(tax_table(pseqtestITS_spp)[,"Family"]) & is.na(tax_table(pseqtestITS_spp)[,"Genus"])
+#tax_table(pseqtestITS_spp)[lo.fam][,"Species"] <- paste("unidentified", tax_table(pseqtestITS_spp)[lo.fam][,"Family"])
+
+```
+
+Now we will agglomerate ('lump') taxa to the lowest rank possible.
+```{r}
+### species agglomeration
+## make taxonomy object by species
+spp_counts_tab <- otu_table(tax_glom(pseqtestITS_spp, taxrank = "Species"), taxa_are_rows = FALSE)
+spp_counts_tab <- t(spp_counts_tab)
+## make vector of species names to set as row names
+spp_tax_vec <- as.vector(tax_table(tax_glom(pseqtestITS_spp, taxrank="Species"))[,7]) 
+rownames(spp_counts_tab) <- as.vector(spp_tax_vec)
+
+asv_counts <- pseqtestITS_spp@otu_table
+#determine the number of unclassified seqs at the species level
+unclassified_spp_counts <- colSums(t(asv_counts)) - colSums(spp_counts_tab)
+#Add a row of "unclassified" to the species count table
+species_and_unidentified_counts_tab <- rbind(spp_counts_tab, "Unclassified_species"=unclassified_spp_counts)
+
+## test all counts are accounted for
+identical(colSums(species_and_unidentified_counts_tab), rowSums(asv_counts))
+
+## convert counts to percent abundance:
+species_proportions <- apply(species_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+
+#Merge with metadata
+species_merge <- merge(t(species_proportions), samdf_ITS,
+                  by="row.names", all=TRUE)
+rownames(species_merge) <- species_merge[,1]
+species_merge <- species_merge[,-1]
+gn<- as.numeric(nrow(species_proportions))
+```
+
+#### Leaf Litter Species at sites with stic data
+```{r}
+library(stringr)
+sppmerge_L<- species_merge[species_merge$substrate=='L',]
+sppmerge_L<- sppmerge_L[!is.na(sppmerge_L$percentwet_11month),]
+spptemp_L<- sppmerge_L[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+spptemp_L <- spptemp_L[,order(colSums(-spptemp_L,na.rm=TRUE))]
+spptemp_L <- spptemp_L[,apply(spptemp_L,2,function(x) sum(x > 0))>1]
+
+
+sppmerge_L <- merge(spptemp_L, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(sppmerge_L) <- sppmerge_L[,1]
+sppmerge_L <- sppmerge_L[,-1]
+sppmerge_L<- sppmerge_L[,colnames(sppmerge_L)!="Unclassified_species"]
+```
+
+gglvm of top leaf taxa
+```{r}
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+L_abun<-sppmerge_L[,1:40]
+X <- as.matrix(sppmerge_L[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(L_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_LL_plot.pdf", 
+    )
+gllvmITS_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_L
+dev.off()
+```
+
+#### Epilithon Species at sites with stic data
+```{r}
+library(stringr)
+sppmerge_B<- species_merge[species_merge$substrate=='B',]
+sppmerge_B<- sppmerge_B[!is.na(sppmerge_B$percentwet_11month),]
+spptemp_B<- sppmerge_B[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+spptemp_B <- spptemp_B[,order(colSums(-spptemp_B,na.rm=TRUE))]
+spptemp_B <- spptemp_B[,apply(spptemp_B,2,function(x) sum(x > 0))>1]
+
+
+sppmerge_B <- merge(spptemp_B, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(sppmerge_B) <- sppmerge_B[,1]
+sppmerge_B <- sppmerge_B[,-1]
+sppmerge_B<- sppmerge_B[,colnames(sppmerge_B)!="Unclassified_species"]
+```
+
+gglvm of top leaf taxa
+```{r}
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+B_abun<-sppmerge_B[,1:40]
+X <- as.matrix(sppmerge_B[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(B_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_BB_plot.pdf", 
+    )
+gllvmITS_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_B
+dev.off()
+```
+
+#### Sediment Species at sites with stic data
+```{r}
+library(stringr)
+sppmerge_S<- species_merge[species_merge$substrate=='S',]
+sppmerge_S<- sppmerge_S[!is.na(sppmerge_S$percentwet_11month),]
+spptemp_S<- sppmerge_S[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+spptemp_S <- spptemp_S[,order(colSums(-spptemp_S,na.rm=TRUE))]
+spptemp_S <- spptemp_S[,apply(spptemp_S,2,function(x) sum(x > 0))>1]
+
+
+sppmerge_S <- merge(spptemp_S, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(sppmerge_S) <- sppmerge_S[,1]
+sppmerge_S <- sppmerge_S[,-1]
+sppmerge_S<- sppmerge_S[,colnames(sppmerge_S)!="Unclassified_species"]
+```
+
+```{r}
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+S_abun<-sppmerge_S[,1:40]
+X <- as.matrix(sppmerge_S[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(S_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 1234)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_SS_plot.pdf", 
+    )
+gllvmITS_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_S
+dev.off()
+```
+
+
