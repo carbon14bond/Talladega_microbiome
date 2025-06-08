@@ -369,7 +369,7 @@ subalpha16S_rich <- ggplot(alpha16S, aes(x=substrate, y=Observed, fill=substrate
  # labs(title = "ASV richness at wet versus dry sites")+
   #scale_fill_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment'))+
   #aes(fill=alpha$substrate, show.legend=FALSE)+
-  theme(legend.position='none',axis.text.x = element_text(size=12), axis.title.x = element_blank(),strip.text.x = element_text(size = 12), plot.title = element_text(size=20, color="black"),
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
               axis.text.y = element_text(size=12, color="black"),
               axis.title.y = element_text(size=14))+
   theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
@@ -410,7 +410,7 @@ subalpha16S_InvSimp <- ggplot(alpha16S, aes(x=substrate, y=InvSimpson, fill=subs
             map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
        geom_signif(comparisons = list(c("B","L")),y_position = 900,
             map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
-  theme(legend.position='none',axis.text.x = element_text(size=12), axis.title.x = element_blank(),strip.text.x = element_text(size = 12), plot.title = element_text(size=20, color="black"),
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
               axis.text.y = element_text(size=12, color="black"),
               axis.title.y = element_text(size=14))+
   theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
@@ -455,7 +455,7 @@ subalphaITS_rich <- ggplot(alphaITS, aes(x=substrate, y=Observed, fill=substrate
  # labs(title = "ASV richness at wet versus dry sites")+
   #scale_fill_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment'))+
   #aes(fill=alpha$substrate, show.legend=FALSE)+
-  theme(legend.position='none',axis.text.x = element_text(size=12), axis.title.x = element_blank(),strip.text.x = element_text(size = 12), plot.title = element_text(size=20, color="black"),
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
               axis.text.y = element_text(size=12, color="black"),
               axis.title.y = element_text(size=14))+
   theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
@@ -496,7 +496,7 @@ subalphaITS_InvSimp <- ggplot(alphaITS, aes(x=substrate, y=InvSimpson, fill=subs
             map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
        geom_signif(comparisons = list(c("B","L")),y_position = 51,
             map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
-  theme(legend.position='none',axis.text.x = element_text(size=12), axis.title.x = element_blank(),strip.text.x = element_text(size = 12), plot.title = element_text(size=20, color="black"),
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
               axis.text.y = element_text(size=12, color="black"),
               axis.title.y = element_text(size=14))+
   theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
@@ -523,30 +523,30 @@ invisible(dev.off())
 ## Putting all the pllots together
 
 spacer<- ggdraw()
-vnsp1<-plot_grid(spacer,venndiagram16S,spacer,rel_widths = c(0.2,1,0.1), ncol=3)
-vnsp2<-plot_grid(spacer,venndiagramITS,spacer,rel_widths = c(0.2,1,0.1), ncol=3)
+vnsp1<-plot_grid(spacer,venndiagram16S,spacer,rel_widths = c(0.3,1,0.3), ncol=3)
+vnsp2<-plot_grid(spacer,venndiagramITS,spacer,rel_widths = c(0.3,1,0.3), ncol=3)
 L1<- plot_grid(ASVaccumsub16S,vnsp1,
-          labels=c('A','B'), ncol=2, rel_widths = c(1.5,1))
+          labels=c('C','D'), ncol=2, rel_widths = c(1.1,1))
 L2<- plot_grid(ASVaccumsubITS,vnsp2,
-          labels=c('F','G'), ncol=2, rel_widths = c(1.5,1))
+          labels=c('G','H'), ncol=2, rel_widths = c(1.1,1))
 
 M1<-plot_grid(subalpha16S_rich, subalpha16S_InvSimp,
-          labels=c('C','D'), ncol=2)
+          labels=c('E','F'), ncol=2)
 
 M2<-plot_grid(subalphaITS_rich, subalphaITS_InvSimp,
-          labels=c('H','I'), ncol=2)
+          labels=c('I','J'), ncol=2)
 
 R1<- plot_grid(nmds2plusleg16S,
-          labels=c('E'))
+          labels=c('A'))
 
 R2<- plot_grid(nmds2pluslegITS,
-          labels=c('J'))
+          labels=c('B'))
 
-LM1<- plot_grid(L1, M1, ncol=1)
-LM2<- plot_grid(L2, M2, ncol=1)
+LM1<- plot_grid(L1, M1, rel_heights = c(0.9,1), ncol=1)
+LM2<- plot_grid(L2, M2, rel_heights = c(0.9,1), ncol=1)
 
-row1<- plot_grid(LM1, R1, ncol=2, rel_widths = c(1.1,1))
-row2<- plot_grid(LM2, R2, ncol=2, rel_widths = c(1.1,1))
+row1<- plot_grid(R1, LM1, ncol=2, rel_widths = c(1,1))
+row2<- plot_grid(R2, LM2,  ncol=2, rel_widths = c(1,1))
 
 #t1<- ggdraw() + draw_label("Prokaryotes (16S)",fontface = 'bold',  x = 0,  hjust = 0 ) #+theme(   plot.margin = margin(0, 0, 0, 7) )
 #t2<- ggdraw() + draw_label( "Fungi (ITS)", fontface = 'bold', x = 0,  hjust = 0 ) #+ theme(   plot.margin = margin(0, 0, 0, 7) )
@@ -554,7 +554,7 @@ row2<- plot_grid(LM2, R2, ncol=2, rel_widths = c(1.1,1))
 bigp<- plot_grid(row1, spacer, row2, labels=NA, ncol=1, rel_heights = c(1.2,0.02,1.2))
 bigp
 
-plotout <- "Overview_05.14.2025.tiff"
+plotout <- "Overview_05.25.2025.tiff"
 agg_tiff(filename=plotout, width=4200, height=3200, units="px",
          pointsize=10, res=600, compression="lzw", scaling=0.5)
 bigp
@@ -563,7 +563,34 @@ invisible(dev.off())
 ```
 
 ## 0.2.2
-### PERMANOVA
+### PERMANOVA for microhabitat (substrate) types and intermittent vs. ephemeral
+
+```{r}
+### 16S by substrate
+adonis2(bray_16S ~ substrate, data = samdf_16S, permutations = 99999, by="terms")
+### ITS by substrate
+adonis2(bray_ITS ~ substrate, data = samdf_ITS, permutations = 99999, by="terms")
+
+## 16S intermittent versus ephemeral (strata = substrate)
+adonis2(bray_16S ~ int_eph, strata=samdf_16S$substrate, data = samdf_16S, permutations = 99999, by="terms")
+## ITS intermittent versus ephemeral (strata = substrate)
+adonis2(bray_ITS ~ int_eph, strata=samdf_ITS$substrate, data = samdf_ITS, permutations = 99999, by="terms")
+
+## wet dry at ephemeral sites only
+### 16S
+pseq16S_eph<- subset_samples(pseqtest16S, int_eph=='ephemeral')
+bray_16S_eph <- phyloseq::distance(pseq16S_eph, method = "bray")
+sam_16S_eph <- data.frame(sample_data(pseq16S_eph ))
+adonis2(bray_16S_eph ~ WetDry, strata=sam_16S_eph$substrate, data = sam_16S_eph, permutations = 99999, by="terms")
+
+### ITS
+pseqITS_eph<- subset_samples(pseqtestITS, int_eph=='ephemeral')
+bray_ITS_eph <- phyloseq::distance(pseqITS_eph, method = "bray")
+sam_ITS_eph <- data.frame(sample_data(pseqITS_eph ))
+adonis2(bray_ITS_eph ~ WetDry, strata=sam_ITS_eph$substrate, data = sam_ITS_eph, permutations = 99999, by="terms")
+```
+
+### PERMANOVAs by percent wet
 Before PERMANOVA, we want to check for independence of our site variables. 
 Note, dry sites lack data for certain variables, and non-STIC sites lack data on others, so we have to subset the data to check differeent combinations of variables.
 #### site characteristics
@@ -1153,3 +1180,190 @@ summary(glm_model)
 
 ```
 
+#######################
+
+# Leaf type effects
+Now, we have presence/absence of leaf types, and can use this to make a Jaccard's distance matrix and test for effects of leaf types on microbial communities while controlling for other variables via Partial Mantel test. 
+
+Tests for Table S2 below:
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+### load data
+pseq16S_L<- subset_samples(pseqtest16S, substrate=="L")
+sample_names(pseq16S_L) <- pseq16S_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseq16S_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+# Create all possible combinations (including self-distances and both directions)
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+# Merge with your existing distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+# Set diagonal (self-distances) to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_dist16SL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_16S_L <- phyloseq::distance(pseq16S_L, method = "bray")
+sam_16S_L <- data.frame(sample_data(pseq16S_L))
+#prcw_dist <- vegdist(sam_16S_L$percentwet_month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_16S_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+### Leaf 16S streamdist and prc_wet Mantel
+
+# TABLE S2A
+mantel(leafdist, stic_dist16SL, method = "pearson", permutations = 9999)
+
+# TABLE S2C
+mantel(bray_16S_L, leafdist, method = "pearson", permutations = 9999)
+
+# TABLE S2D
+#mantel.partial(bray_16S_L, stic_dist16SL, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_16S_L, leafdist, stic_dist16SL, method = "pearson", permutations = 99999)
+
+```
+
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+### load data
+pseqITS_L<- subset_samples(pseqtestITS, substrate=="L")
+sample_names(pseqITS_L) <- pseqITS_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseqITS_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+# Create all possible combinations (including self-distances and both directions)
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+# Merge with your existing distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+# Set diagonal (self-distances) to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_distITSL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_ITS_L <- phyloseq::distance(pseqITS_L, method = "bray")
+sam_ITS_L <- data.frame(sample_data(pseqITS_L))
+#prcw_dist <- vegdist(sam_ITS_L$percentwet_month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_ITS_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+
+# TABLE S2F
+mantel(bray_ITS_L, leafdist, method = "pearson", permutations = 9999)
+
+# TABLE S2G
+mantel.partial(bray_ITS_L, leafdist, stic_distITSL, method = "pearson", permutations = 99999)
+
+```
+
+# checking water permanence versus leaf types
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+pseq16S_11<- subset_samples(pseqtest16S, !is.na(percentwet_11month))
+### load data
+pseq16S_L<- subset_samples(pseq16S_11, substrate=="L")
+sample_names(pseq16S_L) <- pseq16S_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseq16S_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+# Create all possible combinations (including self-distances and both directions)
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+# Merge with your existing distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+# Set diagonal (self-distances) to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_dist16SL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_16S_L <- phyloseq::distance(pseq16S_L, method = "bray")
+sam_16S_L <- data.frame(sample_data(pseq16S_L))
+prcw_dist <- vegdist(sam_16S_L$percentwet_11month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_16S_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+## CHECKING leaf type versus percent wet
+
+### Leaf 16S leaf types and prc_wet Mantel
+# TABLE S2B
+mantel(leafdist, prcw_dist, method = "pearson", permutations = 9999)
+
+mantel(bray_16S_L, leafdist, method = "pearson", permutations = 9999)
+
+#mantel.partial(bray_16S_L, stic_dist16SL, prcw_dist, method = "pearson", permutations = 999)
+
+# TABLE S2E
+mantel.partial(bray_16S_L, leafdist, prcw_dist, method = "pearson", permutations = 99999)
+
+```
+
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+### load data
+pseqITS_11<- subset_samples(pseqtestITS, !is.na(percentwet_11month))
+pseqITS_L<- subset_samples(pseqITS_11, substrate=="L")
+sample_names(pseqITS_L) <- pseqITS_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseqITS_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+# Create all possible combinations (including self-distances and both directions)
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+# Merge with your existing distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+# Set diagonal (self-distances) to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_distITSL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_ITS_L <- phyloseq::distance(pseqITS_L, method = "bray")
+sam_ITS_L <- data.frame(sample_data(pseqITS_L))
+#prcw_dist <- vegdist(sam_ITS_L$percentwet_month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_ITS_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+# TABLE S2H
+mantel.partial(bray_ITS_L, leafdist, prcw_dist, method = "pearson", permutations = 99999)
+
+```
