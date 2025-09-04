@@ -72,6 +72,7 @@ pseqtestITS <- subset_samples(pseqtestITS, siteId != "TLMBP")
 # extract sampe data
 samdf_16S <- data.frame(sample_data(pseqtest16S))
 samdf_ITS <- data.frame(sample_data(pseqtestITS))
+
 ```
 
 ## 0.2.1 
@@ -95,26 +96,27 @@ stressplot(braymds_16S)
 
 factorfit(brayscores_16S, samdf_16S$substrate, permutations = 999)
 factorfit(brayscores_16S, samdf_16S$WetDry, strata = samdf_16S$substrate, permutations = 999)
-factorfit(brayscores_16S, samdf_16S$int_eph, strata = samdf_16S$substrate, permutations = 999)
+#factorfit(brayscores_ITS, samdf_ITS$int_eph, strata = samdf_ITS$substrate, permutations = 999)
 ```
 
 ```{r}
-myColors <- c("#9ACD32","#CD853F","#F4D166")
-
-nmdsp3 <- plot_ordination(pseqtest16S, braymds_16S, type="samples", color="substrate", shape="WetDry")+
+#myColors <- c("#9ACD32","#CD853F","#F4D166") ##56B4E9#0072B2
+myColors <- c("#009E73","#E69F00","#56B4E9")
+nmdsp3 <- plot_ordination(pseqtest16S, braymds_16S, type="samples", color="substrate", shape="persistence_class_state")+
   geom_point(size=2)+scale_colour_manual(values=myColors)
 nmdsp3
 
 nmds2plus16S<- plot_ordination(pseqtest16S, braymds_16S, type="samples")
 nmds2plus16S$layers<-nmds2plus16S$layers[-1]
-nmds2plusp16S<-nmds2plus16S+
-  geom_point(size=2, aes(shape=WetDry, color=substrate))+
-  scale_colour_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+nmds2plusp16Stest<-nmds2plus16S+
+  geom_point(size=3, aes(shape=persistence_class_state, color=substrate))+
+  scale_colour_manual(values=myColors, name='Microhabitat:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
   #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
-  scale_shape_discrete(name='WetDry:')+
-      scale_shape_manual(values = c(1,16,17#,15
-                                  ))+
-  stat_ellipse(aes(x=brayscores_16S[,1],y=brayscores_16S[,2],color=samdf_16S$substrate))+
+  scale_shape_discrete(name='persistence_state:')+
+     # scale_shape_manual(values = c(#1,
+    #                                16,17,15
+    #                              ))+
+  #stat_ellipse(aes(x=brayscores_16S[,1],y=brayscores_16S[,2],fill=samdf_16S$substrate))+
   labs(title = "Bray-Curtis NMDS of prokaryote ASVs by substrate")+
   annotate("text", x = -0.5, y = -1.4, label = sprintf("k=2, Stress=%.4f",braymds_16S$stress), size=3.5)+
  # theme(legend.text = element_text(size=10))+
@@ -125,35 +127,39 @@ nmds2plusp16S<-nmds2plus16S+
         legend.text=element_text(size=10), #change font size of legend text
         strip.text.x = element_text(size = 10),
         #legend.title=element_text(size=9),
-        legend.position = "none",
+       # legend.position = "none",
+         legend.position = "right",
         plot.margin = unit(c(1, 1, 1, 2), "lines")) 
-nmds2plusp16S
+nmds2plusp16Stest
 
 
 ### now with legend, for publishing
 nmds2plusleg16S<-nmds2plus16S+
-  geom_point(size=2, aes(shape=class_state, color=substrate))+
-  scale_colour_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  geom_point(size=2.5, aes(shape=persistence_class_state, fill=substrate)#, #color='black'
+             )+
+  scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
   #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
   #scale_shape_discrete(name='Site type:')+
-      scale_shape_manual(name='Site type', values = c(1,16,17#,15
+      scale_shape_manual(name='Site state', values = c(23,24,21 #1,
+                                    #16,17#,15
                                   ))+
   stat_ellipse(
     #inherit.aes = FALSE, 
-               aes(x=brayscores_16S[,1],y=brayscores_16S[,2],color=samdf_16S$substrate, linetype=(samdf_16S$int_eph)))+
-  labs(title = "Bray-Curtis NMDS of prokaryote ASVs by substrate")+
-  annotate("text", x = 1.5, y = 1, label = sprintf("k=2, Stress=%.4f",braymds_16S$stress), size=3.5)+
+               aes(x=brayscores_16S[,1],y=brayscores_16S[,2],colour=samdf_16S$substrate, linetype=(samdf_16S$persistence_class)))+
+    scale_color_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  labs(title = "Prokaryotic community (Bray Curtis) dissimilarity")+
+  annotate("text", x = 1.5, y = 1, label = sprintf("k=2, Stress=%.4f",braymds_16S$stress), size=5)+
   scale_linetype_discrete(name='Site class:')+
  # theme(legend.text = element_text(size=10))+
     theme(text=element_text(size=10), #change font size of all text
         axis.text=element_text(size=10), #change font size of axis text
         axis.title=element_text(size=10), #change font size of axis titles
-        plot.title=element_text(size=12), #change font size of plot title
+        plot.title=element_text(size=14), #change font size of plot title
         legend.text=element_text(size=10), #change font size of legend text
         strip.text.x = element_text(size = 10),
         #legend.title=element_text(size=9),
         legend.position = "right",
-        plot.margin = unit(c(3, 1, 3, 1), "lines"))
+        plot.margin = unit(c(2, 1, 2, 1), "lines"))
 nmds2plusleg16S
 
 ```
@@ -177,12 +183,12 @@ stressplot(braymds_ITS)
 
 factorfit(brayscores_ITS, samdf_ITS$substrate, permutations = 999)
 factorfit(brayscores_ITS, samdf_ITS$WetDry, strata = samdf_ITS$substrate, permutations = 999)
-factorfit(brayscores_ITS, samdf_ITS$int_eph, strata = samdf_ITS$substrate, permutations = 999)
+factorfit(brayscores_ITS, samdf_ITS$persistence_class, strata = samdf_ITS$substrate, permutations = 999)
 ```
 
 ```{r}
-myColors <- c("#9ACD32","#CD853F","#F4D166")
-
+#myColors <- c("#9ACD32","#CD853F","#F4D166")
+myColors <- c("#009E73","#E69F00","#56B4E9")
 nmdsp3 <- plot_ordination(pseqtestITS, braymds_ITS, type="samples", color="substrate", shape="WetDry")+
   geom_point(size=2)+scale_colour_manual(values=myColors)
 nmdsp3
@@ -190,15 +196,15 @@ nmdsp3
 nmds2plusITS<- plot_ordination(pseqtestITS, braymds_ITS, type="samples")
 nmds2plusITS$layers<-nmds2plusITS$layers[-1]
 nmds2pluspITS<-nmds2plusITS+
-  geom_point(size=2, aes(shape=WetDry, color=substrate))+
+  geom_point(size=2, aes(shape=persistence_class_state, color=substrate))+
   scale_colour_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
   #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
   scale_shape_discrete(name='WetDry:')+
       scale_shape_manual(values = c(1,16,17#,15
                                   ))+
   stat_ellipse(aes(x=brayscores_ITS[,1],y=brayscores_ITS[,2],color=samdf_ITS$substrate))+
-  labs(title = "Bray-Curtis NMDS of fungal ASVs by substrate")+
-  annotate("text", x = -0.5, y = -1.4, label = sprintf("k=2, Stress=%.4f",braymds_ITS$stress), size=3.5)+
+  labs(title = "NMDS of Bray Curtis dissimilarity of fungal ASV relative abundance")+
+  annotate("text", x = -0.5, y = -1, label = sprintf("k=2, Stress=%.4f",braymds_ITS$stress), size=3.5)+
  # theme(legend.text = element_text(size=10))+
     theme(text=element_text(size=10), #change font size of all text
         axis.text=element_text(size=10), #change font size of axis text
@@ -214,28 +220,28 @@ nmds2pluspITS
 
 ### now with legend, for publishing
 nmds2pluslegITS<-nmds2plusITS+
-  geom_point(size=2, aes(shape=class_state, color=substrate))+
-  scale_colour_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  geom_point(size=2.5, aes(shape=persistence_class_state, fill=substrate))+
+  scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
   #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
-  scale_shape_discrete(name='Site type:')+
-      scale_shape_manual(values = c(1,16,17#,15
-                                  ))+
-  stat_ellipse(
-    #inherit.aes = FALSE, 
-               aes(x=brayscores_ITS[,1],y=brayscores_ITS[,2],color=samdf_ITS$substrate, linetype=(samdf_ITS$int_eph)))+
-  labs(title = "Bray-Curtis NMDS of fungal ASVs by substrate")+
-  annotate("text", x = 0.4, y = 0.45, label = sprintf("k=2, Stress=%.4f",braymds_ITS$stress), size=3.5)+
-  scale_linetype_discrete(name='Site class:')+
+  #scale_shape_discrete(name='Site type:')+
+      scale_shape_manual(name='Site state', values = c(c(23,24,21
+                                  )))+
+  stat_ellipse(aes(x=brayscores_ITS[,1],y=brayscores_ITS[,2],color=samdf_ITS$substrate, linetype=(samdf_ITS$persistence_class)))+
+  scale_colour_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+    scale_linetype_discrete(name='Site class:')+
+  labs(title = "Fungal community (Bray Curtis) dissimilarity")+
+  annotate("text", x = 0.4, y = 0.45, label = sprintf("k=2, Stress=%.4f",braymds_ITS$stress), size=5)+
+ # scale_linetype_discrete(name='Site class:')+
  # theme(legend.text = element_text(size=10))+
     theme(text=element_text(size=10), #change font size of all text
         axis.text=element_text(size=10), #change font size of axis text
         axis.title=element_text(size=10), #change font size of axis titles
-        plot.title=element_text(size=12), #change font size of plot title
+        plot.title=element_text(size=14), #change font size of plot title
         legend.text=element_text(size=10), #change font size of legend text
         strip.text.x = element_text(size = 10),
         #legend.title=element_text(size=9),
         legend.position = "right",
-        plot.margin = unit(c(3, 1, 3, 1), "lines"))
+        plot.margin = unit(c(2, 1, 2, 1), "lines"))
 nmds2pluslegITS
 
 ```
@@ -270,7 +276,7 @@ R2<- plot_grid(nmds2pluslegITS,
 bigp<- plot_grid(L1, R1, L2, R2, labels=NA, ncol=2, rel_widths = c(1, 1.618))
 bigp
 
-plotout <- "Beta_sixway_05.13.2025.tiff"
+plotout <- "Beta_sixway_08.24.2025.tiff"
 agg_tiff(filename=plotout, width=3200, height=3000, units="px",
          pointsize=10, res=600, compression="lzw", scaling=0.5)
 bigp
@@ -399,7 +405,7 @@ subalpha16S_InvSimp <- ggplot(alpha16S, aes(x=substrate, y=InvSimpson, fill=subs
   #ggpattern::pattern_fill=alpha$substrate+
   #scale_pattern_fill_manual(values = c('B'="#00BFC4", 'L'="#F8766D", 'S'="#7CAE00", 'W'="#C77CFF"))+
  # scale_fill_grey(start=0.9, end=0.35) +
-  ylab("Inv. Simpson (Evenness)")+
+  ylab("Inv. Simpson")+
   ylim(0,1400)+
   #stat_pvalue_manual(stat.test$p.adj)+
  #geom_signif(comparisons = combn(levels(alpha$substrate),2,simplify = F),
@@ -485,7 +491,7 @@ subalphaITS_InvSimp <- ggplot(alphaITS, aes(x=substrate, y=InvSimpson, fill=subs
   #ggpattern::pattern_fill=alpha$substrate+
   #scale_pattern_fill_manual(values = c('B'="#00BFC4", 'L'="#F8766D", 'S'="#7CAE00", 'W'="#C77CFF"))+
  # scale_fill_grey(start=0.9, end=0.35) +
-  ylab("Inv. Simpson (Evenness)")+
+  ylab("Inv. Simpson")+
   ylim(0,68)+
   #stat_pvalue_manual(stat.test$p.adj)+
  #geom_signif(comparisons = combn(levels(alpha$substrate),2,simplify = F),
@@ -526,9 +532,9 @@ spacer<- ggdraw()
 vnsp1<-plot_grid(spacer,venndiagram16S,spacer,rel_widths = c(0.3,1,0.3), ncol=3)
 vnsp2<-plot_grid(spacer,venndiagramITS,spacer,rel_widths = c(0.3,1,0.3), ncol=3)
 L1<- plot_grid(ASVaccumsub16S,vnsp1,
-          labels=c('C','D'), ncol=2, rel_widths = c(1.1,1))
+          labels=c('C','D'), ncol=2, rel_widths = c(1,1))
 L2<- plot_grid(ASVaccumsubITS,vnsp2,
-          labels=c('G','H'), ncol=2, rel_widths = c(1.1,1))
+          labels=c('G','H'), ncol=2, rel_widths = c(1,1))
 
 M1<-plot_grid(subalpha16S_rich, subalpha16S_InvSimp,
           labels=c('E','F'), ncol=2)
@@ -545,8 +551,8 @@ R2<- plot_grid(nmds2pluslegITS,
 LM1<- plot_grid(L1, M1, rel_heights = c(0.9,1), ncol=1)
 LM2<- plot_grid(L2, M2, rel_heights = c(0.9,1), ncol=1)
 
-row1<- plot_grid(R1, LM1, ncol=2, rel_widths = c(1,1))
-row2<- plot_grid(R2, LM2,  ncol=2, rel_widths = c(1,1))
+row1<- plot_grid(R1, LM1, ncol=2, rel_widths = c(1.2,1))
+row2<- plot_grid(R2, LM2,  ncol=2, rel_widths = c(1.2,1))
 
 #t1<- ggdraw() + draw_label("Prokaryotes (16S)",fontface = 'bold',  x = 0,  hjust = 0 ) #+theme(   plot.margin = margin(0, 0, 0, 7) )
 #t2<- ggdraw() + draw_label( "Fungi (ITS)", fontface = 'bold', x = 0,  hjust = 0 ) #+ theme(   plot.margin = margin(0, 0, 0, 7) )
@@ -554,16 +560,27 @@ row2<- plot_grid(R2, LM2,  ncol=2, rel_widths = c(1,1))
 bigp<- plot_grid(row1, spacer, row2, labels=NA, ncol=1, rel_heights = c(1.2,0.02,1.2))
 bigp
 
-plotout <- "Overview_05.25.2025.tiff"
-agg_tiff(filename=plotout, width=4200, height=3200, units="px",
+plotout <- "Overview_08.25.2025.tiff"
+agg_tiff(filename=plotout, width=4500, height=3200, units="px",
          pointsize=10, res=600, compression="lzw", scaling=0.5)
 bigp
 invisible(dev.off())
 
+
+talp<- plot_grid(R1, R2, LM1, LM2, labels=NA, ncol=2, rel_heights = c(1,1))
+talp
+
+plotout <- "Figure2_08.28.2025.tiff"
+agg_tiff(filename=plotout, width=4200, height=2800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+talp
+invisible(dev.off())
+
+
 ```
 
 ## 0.2.2
-### PERMANOVA for microhabitat (substrate) types and intermittent vs. ephemeral
+### PERMANOVA for microhabitat (substrate) types and persistence class
 
 ```{r}
 ### 16S by substrate
@@ -572,312 +589,22 @@ adonis2(bray_16S ~ substrate, data = samdf_16S, permutations = 99999, by="terms"
 adonis2(bray_ITS ~ substrate, data = samdf_ITS, permutations = 99999, by="terms")
 
 ## 16S intermittent versus ephemeral (strata = substrate)
-adonis2(bray_16S ~ int_eph, strata=samdf_16S$substrate, data = samdf_16S, permutations = 99999, by="terms")
+adonis2(bray_16S ~ persistence_class, strata=samdf_16S$substrate, data = samdf_16S, permutations = 99999, by="terms")
 ## ITS intermittent versus ephemeral (strata = substrate)
-adonis2(bray_ITS ~ int_eph, strata=samdf_ITS$substrate, data = samdf_ITS, permutations = 99999, by="terms")
+adonis2(bray_ITS ~ persistence_class, strata=samdf_ITS$substrate, data = samdf_ITS, permutations = 99999, by="terms")
 
 ## wet dry at ephemeral sites only
 ### 16S
-pseq16S_eph<- subset_samples(pseqtest16S, int_eph=='ephemeral')
-bray_16S_eph <- phyloseq::distance(pseq16S_eph, method = "bray")
-sam_16S_eph <- data.frame(sample_data(pseq16S_eph ))
-adonis2(bray_16S_eph ~ WetDry, strata=sam_16S_eph$substrate, data = sam_16S_eph, permutations = 99999, by="terms")
+#pseq16S_eph<- subset_samples(pseqtest16S, int_eph=='ephemeral')
+#bray_16S_eph <- phyloseq::distance(pseq16S_eph, method = "bray")
+#sam_16S_eph <- data.frame(sample_data(pseq16S_eph ))
+#adonis2(bray_16S_eph ~ WetDry, strata=sam_16S_eph$substrate, data = sam_16S_eph, permutations = 99999, by="terms")
 
 ### ITS
-pseqITS_eph<- subset_samples(pseqtestITS, int_eph=='ephemeral')
-bray_ITS_eph <- phyloseq::distance(pseqITS_eph, method = "bray")
-sam_ITS_eph <- data.frame(sample_data(pseqITS_eph ))
-adonis2(bray_ITS_eph ~ WetDry, strata=sam_ITS_eph$substrate, data = sam_ITS_eph, permutations = 99999, by="terms")
-```
-
-### PERMANOVAs by percent wet
-Before PERMANOVA, we want to check for independence of our site variables. 
-Note, dry sites lack data for certain variables, and non-STIC sites lack data on others, so we have to subset the data to check differeent combinations of variables.
-#### site characteristics
-###### ITS sample sets
-```{r}
-### ITS, all leaf
-### subset selecting any one of three substrates to get one row of metadata per site
-samdf_ITS_sites<-samdf_ITS[samdf_ITS$substrate=='L',]
-samdf_ITS_sites
-samdf_ITS_sites$Acer_spp
-
-metasite_corr<- samdf_ITS_sites[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp")]
-
-library(linkET)
-metacorrplotL<- qcorrplot(correlate(x=metasite_corr[1:14], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (47 sites)")
-metacorrplotL
-
-## Sites with complete dissolved gas data 
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$CO2_avg),]
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "W_Chla", "O2_uM_avg","N2Ar_avg","CO2_avg","N2O_avg", "CH4_avg")]
-
-metacorrplotgas<- qcorrplot(correlate(x=metasite_corr[1:20], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (38 sites)")
-metacorrplotgas
-
-## Sites with 28_day wet data
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$antecedent_28),]
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "antecedent_28")]
-
-metacorrplot28<- qcorrplot(correlate(x=metasite_corr[1:15], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (39 sites)")
-metacorrplot28
-
-## Sites with 28_day wet data
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$percentwet_11month),]
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "percentwet_11month")]
-
-metacorrplot11<- qcorrplot(correlate(x=metasite_corr[1:15], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (39 sites)")
-metacorrplot11
-### for supplemental information, export plots
-library(cowplot)
-plotout <- "envi_corrplots_fungi_May132025.tiff"
-agg_tiff(filename=plotout, width=5600, height=5600, units="px",
-         pointsize=10, res=600, compression="lzw", scaling=0.5)
-plot_grid(metacorrplotL, metacorrplotgas, metacorrplot28, metacorrplot11, labels="AUTO", ncol=2)
-invisible(dev.off())
-
-## Sites with complete dissolved gas data 
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$CO2_avg),]
-metadata_sitecharsa<-metadata_sitecharsa[!is.na(metadata_sitecharsa$percentwet_11month),]
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "W_Chla", "O2_uM_avg","N2Ar_avg","CO2_avg","N2O_avg", "CH4_avg", "percentwet_11month")]
-
-metacorrplotgas11<- qcorrplot(correlate(x=metasite_corr[1:21], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (31 sites)")
-metacorrplotgas11
-
-## Sites with complete dissolved gas data 
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$CO2_avg),]
-metadata_sitecharsa<-metadata_sitecharsa[!is.na(metadata_sitecharsa$antecedent_28),]
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "W_Chla", "O2_uM_avg","N2Ar_avg","CO2_avg","N2O_avg", "CH4_avg", "antecedent_28")]
-
-metacorrplotgas11<- qcorrplot(correlate(x=metasite_corr[1:21], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (30 sites)")
-metacorrplotgas11
-
-##### biofilms chlorophyll ##########
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$B_Chla),]
-metadata_sitecharsa<-metadata_sitecharsa[!is.na(metadata_sitecharsa$percentwet_11month),]
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "B_Chla", "percentwet_11month")]
-metacorrplotgas11<- qcorrplot(correlate(x=metasite_corr[1:16], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (35 sites)")
-metacorrplotgas11
-
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$B_Chla),]
-metadata_sitecharsa<-metadata_sitecharsa[!is.na(metadata_sitecharsa$antecedent_28),]
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "B_Chla", "antecedent_28")]
-metacorrplotgas11<- qcorrplot(correlate(x=metasite_corr[1:16], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (35 sites)")
-metacorrplotgas11
-
-####### percent wet, dissolvedd gas, and epilithic chlorophyll ###########
-## Sites with complete dissolved gas data 
-metadata_sitecharsa<-samdf_ITS_sites[!is.na(samdf_ITS_sites$CO2_avg),]
-metadata_sitecharsa<-metadata_sitecharsa[!is.na(metadata_sitecharsa$percentwet_11month),]
-metadata_sitecharsa<-metadata_sitecharsa[!is.na(metadata_sitecharsa$B_Chla),]
-
-metasite_corr<- metadata_sitecharsa[,c("S_AFDM_prc","LL_AFDM_prc","elevation","distance_from_outlet","drainage_area_ha","twi", "slope_point","slope_buffer","stream_slope","Canopy_Cover_pct","Quercus_spp","Fagus_grandifolia","Liriodendron_tulipifera","Acer_spp", "W_Chla", "O2_uM_avg","N2Ar_avg","CO2_avg","N2O_avg", "CH4_avg", "percentwet_11month","B_Chla")]
-
-metacorrplotgas11<- qcorrplot(correlate(x=metasite_corr[1:22], y=NULL, method = "spearman"), type = "lower", diag = FALSE, grid_size = 0.5) +
-  geom_square() +
-  geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
-            only_mark = TRUE)+
-  #scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
-  scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdYlBu"))+
-  guides(fill = guide_colorbar(title = "Spearman's rho"))+
-  theme(legend.key.size = unit(25,"pt"),
-        axis.text = element_text(size = 18,color = "black"),
-        strip.text = element_text(size = 18,color = "black"),
-        plot.title=element_text(size=16),)+
-  theme(legend.position = "right")+
-  xlab(label="")+
-  ylab(label="")+
-  labs(title = "Environmental predictors (28 sites)")
-metacorrplotgas11
-library(cowplot)
-plotout <- "meta_STIC_bchla_gas_May172025.tiff"
-agg_tiff(filename=plotout, width=3000, height=3000, units="px",
-         pointsize=10, res=600, compression="lzw", scaling=0.5)
-plot_grid(metacorrplotgas11)
-invisible(dev.off())
-
-```
-
-```{r}
-## detatch linkET package, it interferes with downstream stats
-detach("package:linkET", unload=TRUE)
-```
-
-#############
-#### 16S
-```{r}
-### the big test
-
-### 28-day percent wet
-pseqITS_28<- subset_samples(pseqtestITS, !is.na(antecedent_28))
-bray_ITS_28 <- phyloseq::distance(pseqITS_28, method = "bray")
-#braymds_ITS_28 <- metaMDS(bray_ITS_28, k=2, trymax=500, wascores = T)
-#brayscores_ITS_28 <- scores(braymds_ITS_28)
-sam_ITS_28 <- data.frame(sample_data(pseqITS_28 ))
-adonis2(bray_ITS_28 ~ antecedent_28, strata=sam_ITS_28$substrate, data = sam_ITS_28, permutations = 999, by="terms")
-
-### 11-month percent wet
-pseqITS_11<- subset_samples(pseqtestITS, !is.na(percentwet_11month))
-bray_ITS_11 <- phyloseq::distance(pseqITS_11, method = "bray")
-#braymds_ITS_11 <- metaMDS(bray_ITS_11, k=2, trymax=500, wascores = T)
-#brayscores_ITS_11 <- scores(braymds_ITS_11)
-sam_ITS_11 <- data.frame(sample_data(pseqITS_11 ))
-adonis2(bray_ITS_11 ~ percentwet_11month, strata=sam_ITS_11$substrate, data = sam_ITS_11, permutations = 999, by="terms")
-
-### dissoved Oxygen (excluding dry sites)
-pseqITS_O2<- subset_samples(pseqtestITS, !is.na(O2_uM_avg))
-bray_ITS_O2 <- phyloseq::distance(pseqITS_O2, method = "bray")
-#braymds_ITS_O2 <- metaMDS(bray_ITS_O2, k=2, trymax=500, wascores = T)
-#brayscores_ITS_O2 <- scores(braymds_ITS_O2)
-sam_ITS_O2 <- data.frame(sample_data(pseqITS_O2 ))
-adonis2(bray_ITS_O2 ~ O2_uM_avg, strata=sam_ITS_O2$substrate, data = sam_ITS_O2, permutations = 999, by="terms")
-
-
-
-```
-
-
-#### ITS
-```{r}
-
-### 28-day percent wet
-pseqITS_28<- subset_samples(pseqtestITS, !is.na(antecedent_28))
-bray_ITS_28 <- phyloseq::distance(pseqITS_28, method = "bray")
-#braymds_ITS_28 <- metaMDS(bray_ITS_28, k=2, trymax=500, wascores = T)
-#brayscores_ITS_28 <- scores(braymds_ITS_28)
-sam_ITS_28 <- data.frame(sample_data(pseqITS_28 ))
-adonis2(bray_ITS_28 ~ antecedent_28, strata=sam_ITS_28$substrate, data = sam_ITS_28, permutations = 999, by="terms")
-
-### 11-month percent wet
-pseqITS_11<- subset_samples(pseqtestITS, !is.na(percentwet_11month))
-bray_ITS_11 <- phyloseq::distance(pseqITS_11, method = "bray")
-#braymds_ITS_11 <- metaMDS(bray_ITS_11, k=2, trymax=500, wascores = T)
-#brayscores_ITS_11 <- scores(braymds_ITS_11)
-sam_ITS_11 <- data.frame(sample_data(pseqITS_11 ))
-adonis2(bray_ITS_11 ~ percentwet_11month, strata=sam_ITS_11$substrate, data = sam_ITS_11, permutations = 999, by="terms")
-
-### dissoved Oxygen (excluding dry sites)
-pseqITS_O2<- subset_samples(pseqtestITS, !is.na(O2_uM_avg))
-bray_ITS_O2 <- phyloseq::distance(pseqITS_O2, method = "bray")
-#braymds_ITS_O2 <- metaMDS(bray_ITS_O2, k=2, trymax=500, wascores = T)
-#brayscores_ITS_O2 <- scores(braymds_ITS_O2)
-sam_ITS_O2 <- data.frame(sample_data(pseqITS_O2 ))
-adonis2(bray_ITS_O2 ~ O2_uM_avg, strata=sam_ITS_O2$substrate, data = sam_ITS_O2, permutations = 999, by="terms")
-
-
-
+#pseqITS_eph<- subset_samples(pseqtestITS, int_eph=='ephemeral')
+#bray_ITS_eph <- phyloseq::distance(pseqITS_eph, method = "bray")
+#sam_ITS_eph <- data.frame(sample_data(pseqITS_eph ))
+#adonis2(bray_ITS_eph ~ WetDry, strata=sam_ITS_eph$substrate, data = sam_ITS_eph, permutations = 99999, by="terms")
 ```
 
 
@@ -895,11 +622,11 @@ sample_names(pseq16S_11L) <- pseq16S_11L@sam_data$siteId
 sample_order <- sample_names(pseq16S_11L)
 ## subset in-stream distance for these samples
 stic_dist <- read.csv("river_dist_stics.csv")
-# Create all possible combinations (including self-distances and both directions)
+## Create all possible combinations (including self-distances and both directions)
 complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
-# Merge with your existing distances
+## Merge with your existing distances
 geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
-# Set diagonal (self-distances) to 0
+## Set diagonal (self-distances) to 0
 geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
 missing_rev <- is.na(geo_complete$Distance_m)
 geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
@@ -1365,5 +1092,5 @@ leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
 
 # TABLE S2H
 mantel.partial(bray_ITS_L, leafdist, prcw_dist, method = "pearson", permutations = 99999)
-
 ```
+

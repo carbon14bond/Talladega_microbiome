@@ -64,10 +64,16 @@ asvtab16S <- read.table("16S_04.25.2025.count_table", header=T, row.names=1,
                    check.names=F, sep="\t")
 
 metadata_full <- read.csv("meta_sub_05.12.2025.csv", row.names=1)
+metadata_full<-metadata_full[metadata_full$siteId!="TLMBP",]
 metadata_full$substrate <- as.factor(metadata_full$substrate)
+### IF 7-day percent wet < 60%, ephemeral * WetDry
+#metadata_full <- metadata_full %>% 
+#  mutate(class_state = interaction(int_eph_7, WetDry, sep = "_"))
+
 ## for downstream analyses, we'll also want to concatinate site classification (intermittent and ephemeral) and flow state (Wet versus dry)
-metadata_full <- metadata_full %>% 
-  mutate(class_state = interaction(int_eph, WetDry, sep = "_"))
+#metadata_full <- metadata_full %>% 
+#  mutate(class_state = interaction(int_eph, WetDry, sep = "_"))
+
 
 ### For TAXA, NOTE: We have not yet removed Chloroplasts or Mitochondria. So, we add a filter step
 taxtab16S <- read.csv("16S_ASV_taxonomy_04.25.2025.csv", header = T, row.names=1)
@@ -137,10 +143,12 @@ codex<- read.csv("label_codex_TS.csv")
 rownames(asvtabITS)<-codex$Sample
 
 metadata_full <- read.csv("meta_sub_05.12.2025.csv", row.names=1)
-
+metadata_full<-metadata_full[metadata_full$siteId!="TLMBP",]
 metadata_full$substrate <- as.factor(metadata_full$substrate)
-metadata_full <- metadata_full %>% 
-  mutate(class_state = interaction(int_eph, WetDry, sep = "_"))
+### IF 7-day percent wet < 60%, ephemeral * WetDry
+#metadata_full <- metadata_full %>% 
+#  mutate(class_state = interaction(int_eph_7, WetDry, sep = "_"))
+
 
 taxtabITS <- read.csv("ITS_fungi_taxonomy_04.24.2025.csv", header = T, row.names=1)
 
@@ -329,7 +337,10 @@ We can visualize the total numbers of unique ASVs across all samples in two ways
 ```{r}
 
 ### epilithon leaf sediment 
-myColors <- c("#9ACD32","#CD853F","#F4D166")
+#myColors <- c("#9ACD32","#CD853F","#F4D166")
+## colorblind-friendly
+myColors <- c("#009E73","#E69F00","#56B4E9")
+
 
 ## I made the first phyloseq object with Fungi only, non-rarefied, because I want to start with this birds'-eye view, overall ASV richness...
 
@@ -361,18 +372,18 @@ names(myColors) <- levels(samdf_16S$substrate)
 custom_colors <- scale_colour_manual(name = samdf_16S$substrate, values = myColors)
 
 ASVaccumsub16S<- ggplot() +
-  geom_point(data=dfl, colour="#CD853F", aes(x=Sites, y=Richness, )) +
-geom_line(data=dfl, colour="#CD853F",aes(x=Sites, y=Richness)) +
+  geom_point(data=dfl, colour="#E69F00", aes(x=Sites, y=Richness, )) +
+geom_line(data=dfl, colour="#E69F00",aes(x=Sites, y=Richness)) +
 geom_ribbon(data=dfl,aes(x=Sites,
 ymin=(Richness-2*SD),ymax=(Richness+2*SD)),alpha=0.2)+
 
-  geom_point(data=dfb, colour="#9ACD32", aes(x=Sites, y=Richness)) +
-geom_line(data=dfb, colour="#9ACD32", aes(x=Sites, y=Richness)) +
+  geom_point(data=dfb, colour="#009E73", aes(x=Sites, y=Richness)) +
+geom_line(data=dfb, colour="#009E73", aes(x=Sites, y=Richness)) +
 geom_ribbon(data=dfb,aes(x=Sites,
 ymin=(Richness-2*SD),ymax=(Richness+2*SD)),alpha=0.2)+
   
-  geom_point(data=dfs, colour="#F4D166", aes(x=Sites, y=Richness)) +
-geom_line(data=dfs, colour="#F4D166", aes(x=Sites, y=Richness)) +
+  geom_point(data=dfs, colour="#56B4E9", aes(x=Sites, y=Richness)) +
+geom_line(data=dfs, colour="#56B4E9", aes(x=Sites, y=Richness)) +
 geom_ribbon(data=dfs,aes(x=Sites,
 ymin=(Richness-2*SD),ymax=(Richness+2*SD)),alpha=0.2) +
   
@@ -413,7 +424,7 @@ library(MicEco)
 library(eulerr)
 #library(RColorBrewer)
 
-myColors <- c("#9ACD32","#CD853F","#F4D166")
+#myColors <- c("#009E73","#E69F00","#56B4E9")
 
 venndiagram16S<- ps_venn(pseqtest16S,group="substrate", labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'), fill=myColors)
 
@@ -434,7 +445,7 @@ sotu<- pseqtestITS@otu_table[samdf_ITS$substrate=='S',]
 accum_nor_B <- specaccum(botu, method="random")
 accum_nor_L <- specaccum(lotu, method="random")
 accum_nor_S <- specaccum(sotu, method="random")
-myColors <- c("#9ACD32","#CD853F","#F4D166")# ,"#3F8BBA")
+#myColors <- c("#009E73","#E69F00","#56B4E9")
 plot(accum_nor_S, col = myColors[3])
 #then plot the rest
 plot(accum_nor_L, add = TRUE, col = myColors[2])
@@ -449,20 +460,20 @@ library(RColorBrewer)
 #myColors <- c("#9ACD32","#CD853F","#F4D166")
 names(myColors) <- levels(samdf_ITS$substrate)
 custom_colors <- scale_colour_manual(name = samdf_ITS$substrate, values = myColors)
-
+#myColors <- c("#009E73","#E69F00","#56B4E9")
 ASVaccumsubITS<- ggplot() +
-  geom_point(data=dfl, colour="#CD853F", aes(x=Sites, y=Richness, )) +
-geom_line(data=dfl, colour="#CD853F",aes(x=Sites, y=Richness)) +
+  geom_point(data=dfl, colour="#E69F00", aes(x=Sites, y=Richness, )) +
+geom_line(data=dfl, colour="#E69F00",aes(x=Sites, y=Richness)) +
 geom_ribbon(data=dfl,aes(x=Sites,
 ymin=(Richness-2*SD),ymax=(Richness+2*SD)),alpha=0.2)+
 
-  geom_point(data=dfb, colour="#9ACD32", aes(x=Sites, y=Richness)) +
-geom_line(data=dfb, colour="#9ACD32", aes(x=Sites, y=Richness)) +
+  geom_point(data=dfb, colour="#009E73", aes(x=Sites, y=Richness)) +
+geom_line(data=dfb, colour="#009E73", aes(x=Sites, y=Richness)) +
 geom_ribbon(data=dfb,aes(x=Sites,
 ymin=(Richness-2*SD),ymax=(Richness+2*SD)),alpha=0.2)+
   
-  geom_point(data=dfs, colour="#F4D166", aes(x=Sites, y=Richness)) +
-geom_line(data=dfs, colour="#F4D166", aes(x=Sites, y=Richness)) +
+  geom_point(data=dfs, colour="#56B4E9", aes(x=Sites, y=Richness)) +
+geom_line(data=dfs, colour="#56B4E9", aes(x=Sites, y=Richness)) +
 geom_ribbon(data=dfs,aes(x=Sites,
 ymin=(Richness-2*SD),ymax=(Richness+2*SD)),alpha=0.2) +
 
@@ -494,7 +505,7 @@ library(MicEco)
 library(eulerr)
 #library(RColorBrewer)
 
-myColors <- c("#9ACD32","#CD853F","#F4D166")#,"#3F8BBA")
+#myColors <- c("#009E73","#E69F00","#56B4E9")
 
 venndiagramITS<- ps_venn(pseqtestITS,group="substrate", labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'), fill=myColors)
 

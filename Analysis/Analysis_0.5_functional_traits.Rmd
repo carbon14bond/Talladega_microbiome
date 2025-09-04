@@ -104,7 +104,7 @@ library(gllvm)
 library(tidyverse)
 
 #detach("package:linkET", unload=TRUE)
-eco_abun<-ecotab_S[,101:114]
+eco_abun<-ecotab_S[,102:115]
 X <- as.matrix(ecotab_S[,c("percentwet_11month","LL_AFDM_prc")])
 y<-as.matrix(as.tibble(eco_abun))
 colnames(y)
@@ -130,6 +130,47 @@ pdf("GLLVM_MetaCyc_S_plot.pdf",
 gllvm_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
 gllvm_S
 dev.off()
+
+########## making the gllvm more visually appealing using ggplot
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(metapath = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+ggllvm_metacyc_S<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(metapath,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=12),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 1, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "MetaCyc pathways in sediment")
+ggllvm_metacyc_S
+
+
 ```
 
 Leaf
@@ -140,7 +181,7 @@ library(gllvm)
 library(tidyverse)
 
 #detach("package:linkET", unload=TRUE)
-eco_abun<-ecotab_L[,101:114]
+eco_abun<-ecotab_L[,102:115]
 X <- as.matrix(ecotab_L[,c("percentwet_11month","LL_AFDM_prc")])
 y<-as.matrix(as.tibble(eco_abun))
 colnames(y)
@@ -166,6 +207,48 @@ pdf("GLLVM_MetaCyc_L_plot.pdf",
 gllvm_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
 gllvm_L
 dev.off()
+
+########## making the gllvm more visually appealing using ggplot
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(metapath = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+ggllvm_metacyc_L<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(metapath,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=12),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 1, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "MetaCyc pathways in leaf litter")
+ggllvm_metacyc_L
+
+
+
 ```
  
 Rock
@@ -176,7 +259,7 @@ library(gllvm)
 library(tidyverse)
 
 #detach("package:linkET", unload=TRUE)
-eco_abun<-ecotab_B[,101:114]
+eco_abun<-ecotab_B[,102:115]
 X <- as.matrix(ecotab_B[,c("percentwet_11month","LL_AFDM_prc")])
 y<-as.matrix(as.tibble(eco_abun))
 colnames(y)
@@ -202,6 +285,68 @@ pdf("GLLVM_MetaCyc_B_plot.pdf",
 gllvm_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
 gllvm_B
 dev.off()
+
+########## making the gllvm more visually appealing using ggplot
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(metapath = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+ggllvm_metacyc_B<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(metapath,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=12),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 1, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "MetaCyc pathways in epilithon")
+ggllvm_metacyc_B
+
+ggllvm_metacyc_Bleg<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(metapath,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size=12),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 11),
+        legend.position = "bottom",
+        plot.margin = unit(c(1.5, 1, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "MetaCyc pathways in sediment")
+
+
 ```
  
 
@@ -257,11 +402,11 @@ ecotab[,102:113]<- ecotab[,102:113] %>% mutate_if(is.character,as.numeric)
 ```
 
 ```{r}
-ecotab[,102:113]
+ecotab[,103:114]
 ecotabS<- ecotab[ecotab$substrate=="S"&!is.na(ecotab$percentwet_11month),]
 
 library(linkET)
-correlate(ecotabS[,102:113], ecotabS[,c(82:83,88:89)]) %>% 
+correlate(ecotabS[,103:114], ecotabS[,c(82:83,88:89)]) %>% 
   qcorrplot() +
   geom_square() +
     geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
@@ -274,18 +419,55 @@ correlate(ecotabS[,102:113], ecotabS[,c(82:83,88:89)]) %>%
 library(linkET)
 ecotabS<- ecotab[ecotab$substrate=="S"&!is.na(ecotab$percentwet_11month)&!is.na(ecotab$CH4_avg),]
 
-adjust_pvalue(correlate(ecotabS[,102:113], ecotabS[,c(65,75,89)]),method = "holm") %>% 
+ecotabSplot<- adjust_pvalue(correlate(ecotabS[,103:114], ecotabS[,c(65,75,89)]),method = "holm") %>% 
   qcorrplot() +
   geom_square() +
-    geom_mark(sep = '\n',size=4,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
+    geom_mark(sep = '\n',size=7,sig_level = c(0.05,0.01,0.001),sig_thres = 0.05,
             only_mark = TRUE)+
   scale_fill_gradientn(colours = RColorBrewer::brewer.pal(11, "RdBu"))+
   xlab(label="")+
   ylab(label="")+
-  ggtitle(label="Sediments (n=31)")
+  ggtitle(label="Sediments with gas + STIC data (n=31)")+
+  theme(plot.title = element_text(hjust=0.5, size=16, face = "bold"),
+        axis.text.x.bottom = element_text(size = 14, angle=45,vjust=1.05),
+        axis.text.y.left = element_text(size = 14),
+  plot.margin = unit(c(12, 4, 2, 4), "lines"))
+ecotabSplot
+
+## detatch linkET package, it interferes with downstream stats
+detach("package:linkET", unload=TRUE)
 ```
 
+```{r}
+library(cowplot)
+library(ragg)
+three_gllvm<- plot_grid(ggllvm_metacyc_L, ggllvm_metacyc_B, ggllvm_metacyc_S, align="hv", ncol=1, labels="AUTO", label_size=20, hjust=-1, vjust=2.5)#, labels=c, rel_widths = c(1, 1.618))
+three_gllvm
+leg <- get_legend(ggllvm_metacyc_Bleg)
+leg
 
+three_gllvmleg<- plot_grid(three_gllvm, leg, ncol=1, rel_heights = c(1,0.05))#, labels=c, rel_widths = c(1, 1.618))
+three_gllvmleg
+
+fourleglong<- plot_grid(three_gllvmleg, ecotabSplot, labels=c('','D'), ncol=1, rel_heights = c(1,0.30))#, labels=c, rel_widths = c(1, 1.618))
+fourleglong
+
+fourlegwide<- plot_grid(three_gllvmleg, ecotabSplot, labels=c('','D'), ncol=2, label_size=20, hjust=-2.5, vjust=13, rel_widths = c(1,0.95))#, rel_heights = c(1,0.30))#, labels=c, rel_widths = c(1, 1.618))
+fourlegwide
+
+plotout <- "picrust_gllvm_corrplots_09.03.2025.tiff"
+agg_tiff(filename=plotout, width=2000, height=4800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.45)
+fourleglong
+invisible(dev.off())
+
+plotout <- "picrust_gllvm_corrplots_wide_09.03.2025.tiff"
+agg_tiff(filename=plotout, width=4000, height=4200, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.64)
+fourlegwide
+invisible(dev.off())
+
+```
 
 
 

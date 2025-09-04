@@ -37,11 +37,9 @@ library(ggpubr)
 
 #Set theme
 theme_set(theme_bw() + theme(
-              plot.title = element_text(size=20, color="black"),
-              axis.text.x = element_text(size=15, color="black"),
-              axis.text.y = element_text(size=15, color="black"),
-              axis.title.x = element_text(size=15),
-              axis.title.y = element_text(size=15),
+             # plot.title = element_text(size=15, color="black"),
+              axis.title.x = element_text(size=11),
+             # axis.title.y = element_text(size=15),
               legend.text = element_text(size=12),
               legend.title = element_text(size=15),
             #  legend.position = "bottom",
@@ -141,12 +139,15 @@ gentemp_L<- genmerge_L[,1:gn]
 gentemp_L <- gentemp_L[,order(colSums(-gentemp_L,na.rm=TRUE))]
 gentemp_L <- gentemp_L[,apply(gentemp_L,2,function(x) sum(x > 0))>1]
 
+sapply(gentemp_L, sd)
 
 genmerge_L <- merge(gentemp_L, samdf_16S,
                   by="row.names", all=FALSE)
 rownames(genmerge_L) <- genmerge_L[,1]
 genmerge_L <- genmerge_L[,-1]
 genmerge_L<- genmerge_L[,colnames(genmerge_L)!="Unclassified_genus"]
+
+
 
 library(mvabund)
 library(gllvm)
@@ -167,7 +168,7 @@ ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
 #gllvm(formula = y~X$prc_wet, family = "negative.binomial")
 
 fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
-                 formula = ~ percentwet_11month, seed = 1234)
+                 formula = ~ percentwet_11month, seed = 2025)
 coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
 
 pdf("GLLVM_16S_LL_plot.pdf", 
@@ -176,6 +177,89 @@ gllvm16S_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1
 gllvm16S_L
 dev.off()
 ```
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+median(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),]
+
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+                 
+### Now, we might have some other outliers, with 
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SLleg<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        #axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        legend.position = "bottom",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Correlation coefficient with 11-month water persistence:", fill="Correlation coefficient with 11-month water persistence:", title = "Prokaryotes in leaf litter (n=40)")
+ggllvm_16SLleg
+
+ggllvm_16SL<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryotes in leaf litter (n=40)")
+ggllvm_16SL
+
+```
+
+
 
 #### Epilithon Species at sites with stic data
 ```{r}
@@ -209,7 +293,7 @@ ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
 #gllvm(formula = y~X$prc_wet, family = "negative.binomial")
 
 fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
-                 formula = ~ percentwet_11month, seed = 1234)
+                 formula = ~ percentwet_11month, seed = 2025)
 coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
 
 pdf("GLLVM_16S_BB_plot.pdf", 
@@ -218,6 +302,64 @@ gllvm16S_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1
 gllvm16S_B
 dev.off()
 ```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SB<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryotes in epilithon (n=35)")
+ggllvm_16SB
+#56B4E9
+```
+
+
 
 #### Sediment Species at sites with stic data
 ```{r}
@@ -251,7 +393,7 @@ ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
 #gllvm(formula = y~X$prc_wet, family = "negative.binomial")
 
 fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
-                 formula = ~ percentwet_11month, seed = 1234)
+                 formula = ~ percentwet_11month, seed = 2025)
 coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
 
 pdf("GLLVM_16S_SS_plot.pdf", 
@@ -259,6 +401,62 @@ pdf("GLLVM_16S_SS_plot.pdf",
 gllvm16S_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
 gllvm16S_S
 dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SS<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryotes in sediment (n=40)")
+ggllvm_16SS
+
 ```
 
 
@@ -270,7 +468,7 @@ In the past I've lumped taxa to the gens level for corrplots, but I see some aqu
 pseqtestITS_spp <- pseqtestITS
 ### If Species == NA, rename 'spp.'. We will merge these, so potentially multiple species may be merged together.
 na.sp = !is.na(tax_table(pseqtestITS_spp)[,"Genus"]) & is.na(tax_table(pseqtestITS_spp)[,"Species"])
-tax_table(pseqtestITS_spp)[na.sp][,"Species"] <- "sp. unk."
+tax_table(pseqtestITS_spp)[na.sp][,"Species"] <- "spp. unid."
 na.gn  = is.na(tax_table(pseqtestITS_spp)[,"Genus"])
 tax_table(pseqtestITS_spp)[na.gn][,"Species"] <- ""
 ### good
@@ -310,12 +508,18 @@ identical(colSums(species_and_unidentified_counts_tab), rowSums(asv_counts))
 ## convert counts to percent abundance:
 species_proportions <- apply(species_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
 
+species_proportions<- species_proportions[!grepl("Incertae",rownames(species_proportions)),]
+
 #Merge with metadata
 species_merge <- merge(t(species_proportions), samdf_ITS,
                   by="row.names", all=TRUE)
 rownames(species_merge) <- species_merge[,1]
 species_merge <- species_merge[,-1]
-gn<- as.numeric(nrow(species_proportions))
+
+## remove genera Incertae sedis
+#species_merge<- species_merge[,!grepl("Incertae",colnames(species_merge))]
+
+gn<- as.numeric(nrow(species_merge))
 ```
 
 #### Leaf Litter Species at sites with stic data
@@ -358,7 +562,7 @@ ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
 #gllvm(formula = y~X$prc_wet, family = "negative.binomial")
 
 fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
-                 formula = ~ percentwet_11month, seed = 1234)
+                 formula = ~ percentwet_11month, seed = 2025)
 coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
 
 pdf("GLLVM_ITS_LL_plot.pdf", 
@@ -366,6 +570,62 @@ pdf("GLLVM_ITS_LL_plot.pdf",
 gllvmITS_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
 gllvmITS_L
 dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+#rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+#coefP[coefP$taxID=="Tremellodendropsidales_gen_Incertae_sedis spp. unid.","taxID"] <- "Tremellodendropsidales gen. In. sed"
+
+ggllvm_ITSL<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungi in leaf litter (n=40)")
+ggllvm_ITSL
+#56B4E9
 ```
 
 #### Epilithon Species at sites with stic data
@@ -395,6 +655,8 @@ library(tidyverse)
 
 #detach("package:linkET", unload=TRUE)
 B_abun<-sppmerge_B[,1:40]
+colSums(B_abun)
+
 X <- as.matrix(sppmerge_B[,c("percentwet_11month","LL_AFDM_prc")])
 y<-as.matrix(as.tibble(B_abun))
 
@@ -408,7 +670,7 @@ ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
 #gllvm(formula = y~X$prc_wet, family = "negative.binomial")
 
 fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
-                 formula = ~ percentwet_11month, seed = 1234)
+                 formula = ~ percentwet_11month, seed = 2025)
 coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
 
 pdf("GLLVM_ITS_BB_plot.pdf", 
@@ -417,6 +679,67 @@ gllvmITS_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1
 gllvmITS_B
 dev.off()
 ```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),] 
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+#rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+#coefP[coefP$taxID=="Pleosporaceae_gen_Incertae_sedis spp. unid.","taxID"] <- "Pleosporaceae gen. In. sed."
+#coefP[coefP$taxID=="Pannariaceae_gen_Incertae_sedis spp. unid.","taxID"] <- "Pannariaceae gen. In. sed."
+#coefP[coefP$taxID=="Capnodiales_gen_Incertae_sedis spp. unid.","taxID"] <- "Capnodiales gen. In. sed."
+#coefP[coefP$taxID=="Pleosporaceae_gen_Incertae_sedis spp. unid.","taxID"] <- "Pleosporaceae gen. In. sed."
+
+ggllvm_ITSB<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungi in epilithon (n=26)")
+ggllvm_ITSB
+#56B4E9
+```
+
 
 #### Sediment Species at sites with stic data
 ```{r}
@@ -444,6 +767,8 @@ library(tidyverse)
 
 #detach("package:linkET", unload=TRUE)
 S_abun<-sppmerge_S[,1:40]
+colSums(S_abun)
+
 X <- as.matrix(sppmerge_S[,c("percentwet_11month","LL_AFDM_prc")])
 y<-as.matrix(as.tibble(S_abun))
 
@@ -457,7 +782,7 @@ ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
 #gllvm(formula = y~X$prc_wet, family = "negative.binomial")
 
 fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
-                 formula = ~ percentwet_11month, seed = 1234)
+                 formula = ~ percentwet_11month, seed = 2025)
 coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
 
 pdf("GLLVM_ITS_SS_plot.pdf", 
@@ -467,4 +792,75 @@ gllvmITS_S
 dev.off()
 ```
 
+```{r}
 
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),] 
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+coefP<- coefP[coefP$ciup<10*median(coefP$ciup),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+#rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+#coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_ITSS<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungi in sediment (n=32)")
+ggllvm_ITSS
+#56B4E9
+```
+
+```{r}
+library(cowplot)
+
+six_gllvm<- plot_grid(ggllvm_16SL, ggllvm_16SB, ggllvm_16SS, ggllvm_ITSL, ggllvm_ITSB, ggllvm_ITSS, ncol=3, align="hv", labels="AUTO")#, labels=c, rel_widths = c(1, 1.618))
+six_gllvm
+
+leg <- get_legend(ggllvm_16SLleg)
+leg
+plotout <- "six_gllvm_08.28.2025.tiff"
+agg_tiff(filename=plotout, width=4800, height=3800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(six_gllvm, leg, ncol=1, rel_heights = c(1,0.05))
+invisible(dev.off())
+
+```
