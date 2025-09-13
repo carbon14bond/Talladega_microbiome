@@ -28,7 +28,7 @@ This repository is a work in progress and may not yet contain all code or data.
 ## Introduction
 Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
 STIC sensors deployed across most sites allowed us to estimate the percent of time surface water was present over an 11-month period.
-![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/talmap5-21-2025_orig.png)
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/figure1_orig.jpg)
 
 Figure 1) Study watershed and stream network, with STIC sensor-equipped sites colored by the percent of time they were wet over an 11-month period, and non-sensor-equipped sites colored in grey. Sites were also classified as ephemeral or intermittent based on flow permanence, and one beaver pond site was permanent. Some ephemeral sites were dry at the time of sampling, shown on the map as hollow circles. 
 
@@ -60,14 +60,20 @@ Analysis:
 
 ### Analysis 0.1 and 0.2
 Leaf litter, rock surfaces, and sediments differed in both prokaryotic and fungal community composition. 
-![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/overview-05-21-2025_orig.png)
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/published/figure2-08-28-2025.jpg?1757785164)
 Figure 2) For prokaryotes and fungi, ASV accumulations curves for each substrate across all sites, Venn diagrams showing unique ASVs occurring in substrates, and NMDS plots showing difference between substrates and between intermittent and ephemeral sites. 
 
 ### Analysis 0.3
-Major prokaryotic and fungal taxa across the intermittent-ephemeraal continuum.
-![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/taxa-2-panel-05-22-2025_orig.png)
+Dominant prokaryotic and fungal phyla or classes across the dry, recently dry, and relatively wet sites. 
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/figure-3_orig.jpg)
 Figure 3. Bars show average percent abundances in each microhabitat, separated into dry ephemeral sites, wet ephemeral sites, and wet intermittent sites.
    (A) the top prokaryotic phyla, or classes of Pseudomonadota (formerly Proteobacteria).
    (B) the top fungal phyla or classes of Ascomycota. 
-   
 
+### Analysis 0.4
+Generalized linear latent variable models testing for correlations between 11-month water persistence and relative abundance of the dominant prokaryotic and fungal genera or species in each microhabitat. 
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/figure-4_orig.jpg)
+
+### Analysis 0.5
+Trends in PICRUSt2-based MetaCyc pathways or KO relative abundances. (A-C) Generalized linear latent variable models testing for correlations between 11-month water persistence and relative abundance of the MetaCyc pathways prokaryotic and fungal genera or species in each microhabitat. 
+![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/figure-5-09-03-2025_orig.jpg)
