@@ -1,0 +1,1096 @@
+---
+title: "Analysis_0.2_Community_Composition_Analysis"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Microbial Community Analysis: Talladega Forest Non-perennial Stream Network
+
+## Analysis_0.2: Community Composition Across a Flow-Permanence Continuum
+
+### Introduction
+In the previous R markdown, we processed 16S and ITS ASV count data, visualized, and rarefied  Now the rarefied 16S and ITS data, as well as accumulation curves and Venn Diagrams, are exported at .Rdata files. 
+This is helpful as my laptop's RAM is a bit overwhelmed handling the full 16S data, so being able to start fresh with just the rarefied data should help things run a little smoother. 
+
+## Setup
+```{r, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/chunk/Talladega_synoptic")
+knitr::opts_knit$set(root.dir = "/Users/chunk/Talladega_synoptic/Analysis")
+options(knitr.duplicate.label = "allow") ### so I don't have to give chunks unique names
+```
+
+```{r}
+#library(dada2)
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(pheatmap)
+library(GUniFrac)
+library(pals)
+library(RColorBrewer)
+library(ragg)
+library(ggpubr)
+
+#Set theme
+theme_set(theme_bw() + theme(
+              plot.title = element_text(size=20, color="black"),
+              axis.text.x = element_text(size=15, color="black"),
+              axis.text.y = element_text(size=15, color="black"),
+              axis.title.x = element_text(size=15),
+              axis.title.y = element_text(size=15),
+              legend.text = element_text(size=12),
+              legend.title = element_text(size=15),
+            #  legend.position = "bottom",
+            #  legend.key=element_blank(),
+            #  legend.key.size = unit(0.5, "cm"),
+            #  legend.spacing.x = unit(0.1, "cm"),
+            #  legend.spacing.y = unit(0.1, "cm"),
+              panel.background = element_blank(), 
+              #panel.border = element_rect(colour = "black", fill=NA, size=1),
+              plot.background = element_blank()))
+```
+
+## Load phyloseq objects
+```{r}
+#prokaryotes
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtest16S.rdata")
+pseqtest16S
+
+#fungi
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtestITS.rdata")
+pseqtestITS
+
+## Cutting the single beaver pond site, its an outlier, the only permanent lentic site
+pseqtest16S <- subset_samples(pseqtest16S, siteId != "TLMBP")
+pseqtestITS <- subset_samples(pseqtestITS, siteId != "TLMBP")
+
+# extract sampe data
+samdf_16S <- data.frame(sample_data(pseqtest16S))
+samdf_ITS <- data.frame(sample_data(pseqtestITS))
+
+```
+
+## 0.2.1 
+### Bray-Curtis NMDS
+
+#### 16S
+```{r}
+#generate distance matrices
+bray_16S <- phyloseq::distance(pseqtest16S, method = "bray")
+#jactest <- phyloseq::distance(pseqtest16S, method="jaccard", binary=TRUE)
+# NMDS
+braymds_16S <- metaMDS(bray_16S, k=2, trymax=500, wascores = T)
+brayscores_16S <- scores(braymds_16S)
+#jacmds <- metaMDS(jactest, k=3, trymax=500, wascores = T)
+#jacscores <- scores(jacmds)
+braymds_16S
+#jacmds
+
+stressplot(braymds_16S)
+#stressplot(jacmds)
+
+factorfit(brayscores_16S, samdf_16S$substrate, permutations = 999)
+factorfit(brayscores_16S, samdf_16S$WetDry, strata = samdf_16S$substrate, permutations = 999)
+#factorfit(brayscores_ITS, samdf_ITS$int_eph, strata = samdf_ITS$substrate, permutations = 999)
+```
+
+```{r}
+#myColors <- c("#9ACD32","#CD853F","#F4D166") ##56B4E9#0072B2
+myColors <- c("#009E73","#E69F00","#56B4E9")
+nmdsp3 <- plot_ordination(pseqtest16S, braymds_16S, type="samples", color="substrate", shape="persistence_class_state")+
+  geom_point(size=2)+scale_colour_manual(values=myColors)
+nmdsp3
+
+nmds2plus16S<- plot_ordination(pseqtest16S, braymds_16S, type="samples")
+nmds2plus16S$layers<-nmds2plus16S$layers[-1]
+nmds2plusp16Stest<-nmds2plus16S+
+  geom_point(size=3, aes(shape=persistence_class_state, color=substrate))+
+  scale_colour_manual(values=myColors, name='Microhabitat:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
+  scale_shape_discrete(name='persistence_state:')+
+     # scale_shape_manual(values = c(#1,
+    #                                16,17,15
+    #                              ))+
+  #stat_ellipse(aes(x=brayscores_16S[,1],y=brayscores_16S[,2],fill=samdf_16S$substrate))+
+  labs(title = "Bray-Curtis NMDS of prokaryote ASVs by substrate")+
+  annotate("text", x = -0.5, y = -1.4, label = sprintf("k=2, Stress=%.4f",braymds_16S$stress), size=3.5)+
+ # theme(legend.text = element_text(size=10))+
+    theme(text=element_text(size=10), #change font size of all text
+        axis.text=element_text(size=10), #change font size of axis text
+        axis.title=element_text(size=10), #change font size of axis titles
+        plot.title=element_text(size=12), #change font size of plot title
+        legend.text=element_text(size=10), #change font size of legend text
+        strip.text.x = element_text(size = 10),
+        #legend.title=element_text(size=9),
+       # legend.position = "none",
+         legend.position = "right",
+        plot.margin = unit(c(1, 1, 1, 2), "lines")) 
+nmds2plusp16Stest
+
+
+### now with legend, for publishing
+nmds2plusleg16S<-nmds2plus16S+
+  geom_point(size=2.5, aes(shape=persistence_class_state, fill=substrate)#, #color='black'
+             )+
+  scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
+  #scale_shape_discrete(name='Site type:')+
+      scale_shape_manual(name='Site state', values = c(23,24,21 #1,
+                                    #16,17#,15
+                                  ))+
+  stat_ellipse(
+    #inherit.aes = FALSE, 
+               aes(x=brayscores_16S[,1],y=brayscores_16S[,2],colour=samdf_16S$substrate, linetype=(samdf_16S$persistence_class)))+
+    scale_color_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  labs(title = "Prokaryotic community (Bray Curtis) dissimilarity")+
+  annotate("text", x = 1.5, y = 1, label = sprintf("k=2, Stress=%.4f",braymds_16S$stress), size=5)+
+  scale_linetype_discrete(name='Site class:')+
+ # theme(legend.text = element_text(size=10))+
+    theme(text=element_text(size=10), #change font size of all text
+        axis.text=element_text(size=10), #change font size of axis text
+        axis.title=element_text(size=10), #change font size of axis titles
+        plot.title=element_text(size=14), #change font size of plot title
+        legend.text=element_text(size=10), #change font size of legend text
+        strip.text.x = element_text(size = 10),
+        #legend.title=element_text(size=9),
+        legend.position = "right",
+        plot.margin = unit(c(2, 1, 2, 1), "lines"))
+nmds2plusleg16S
+
+```
+
+
+#### ITS
+```{r}
+#generate distance matrices
+bray_ITS <- phyloseq::distance(pseqtestITS, method = "bray")
+#jactest <- phyloseq::distance(pseqtestITS, method="jaccard", binary=TRUE)
+# NMDS
+braymds_ITS <- metaMDS(bray_ITS, k=2, trymax=500, wascores = T)
+brayscores_ITS <- scores(braymds_ITS)
+#jacmds <- metaMDS(jactest, k=3, trymax=500, wascores = T)
+#jacscores <- scores(jacmds)
+braymds_ITS
+#jacmds
+
+stressplot(braymds_ITS)
+#stressplot(jacmds)
+
+factorfit(brayscores_ITS, samdf_ITS$substrate, permutations = 999)
+factorfit(brayscores_ITS, samdf_ITS$WetDry, strata = samdf_ITS$substrate, permutations = 999)
+factorfit(brayscores_ITS, samdf_ITS$persistence_class, strata = samdf_ITS$substrate, permutations = 999)
+```
+
+```{r}
+#myColors <- c("#9ACD32","#CD853F","#F4D166")
+myColors <- c("#009E73","#E69F00","#56B4E9")
+nmdsp3 <- plot_ordination(pseqtestITS, braymds_ITS, type="samples", color="substrate", shape="WetDry")+
+  geom_point(size=2)+scale_colour_manual(values=myColors)
+nmdsp3
+
+nmds2plusITS<- plot_ordination(pseqtestITS, braymds_ITS, type="samples")
+nmds2plusITS$layers<-nmds2plusITS$layers[-1]
+nmds2pluspITS<-nmds2plusITS+
+  geom_point(size=2, aes(shape=persistence_class_state, color=substrate))+
+  scale_colour_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
+  scale_shape_discrete(name='WetDry:')+
+      scale_shape_manual(values = c(1,16,17#,15
+                                  ))+
+  stat_ellipse(aes(x=brayscores_ITS[,1],y=brayscores_ITS[,2],color=samdf_ITS$substrate))+
+  labs(title = "NMDS of Bray Curtis dissimilarity of fungal ASV relative abundance")+
+  annotate("text", x = -0.5, y = -1, label = sprintf("k=2, Stress=%.4f",braymds_ITS$stress), size=3.5)+
+ # theme(legend.text = element_text(size=10))+
+    theme(text=element_text(size=10), #change font size of all text
+        axis.text=element_text(size=10), #change font size of axis text
+        axis.title=element_text(size=10), #change font size of axis titles
+        plot.title=element_text(size=12), #change font size of plot title
+        legend.text=element_text(size=10), #change font size of legend text
+        strip.text.x = element_text(size = 10),
+        #legend.title=element_text(size=9),
+        legend.position = "none",
+        plot.margin = unit(c(1, 1, 1, 2), "lines")) 
+nmds2pluspITS
+
+
+### now with legend, for publishing
+nmds2pluslegITS<-nmds2plusITS+
+  geom_point(size=2.5, aes(shape=persistence_class_state, fill=substrate))+
+  scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+  #scale_color_discrete(name='Substrate:', labels=c('Epilithic biofilms', 'Leaf litter', 'Benthic sediment'))+
+  #scale_shape_discrete(name='Site type:')+
+      scale_shape_manual(name='Site state', values = c(c(23,24,21
+                                  )))+
+  stat_ellipse(aes(x=brayscores_ITS[,1],y=brayscores_ITS[,2],color=samdf_ITS$substrate, linetype=(samdf_ITS$persistence_class)))+
+  scale_colour_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+    scale_linetype_discrete(name='Site class:')+
+  labs(title = "Fungal community (Bray Curtis) dissimilarity")+
+  annotate("text", x = 0.4, y = 0.45, label = sprintf("k=2, Stress=%.4f",braymds_ITS$stress), size=5)+
+ # scale_linetype_discrete(name='Site class:')+
+ # theme(legend.text = element_text(size=10))+
+    theme(text=element_text(size=10), #change font size of all text
+        axis.text=element_text(size=10), #change font size of axis text
+        axis.title=element_text(size=10), #change font size of axis titles
+        plot.title=element_text(size=14), #change font size of plot title
+        legend.text=element_text(size=10), #change font size of legend text
+        strip.text.x = element_text(size = 10),
+        #legend.title=element_text(size=9),
+        legend.position = "right",
+        plot.margin = unit(c(2, 1, 2, 1), "lines"))
+nmds2pluslegITS
+
+```
+
+```{r}
+## load accumulation curves and venn diagrams
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagramITS.rdata")
+venndiagramITS
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsubITS.rdata")
+ASVaccumsubITS
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/venndiagram16S.rdata")
+venndiagram16S
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/ASVaccumsub16S.rdata")
+ASVaccumsub16S
+
+### now combine in a plot with
+## nmds2pluslegITS
+##### and 
+## nmds2plusleg16S
+
+library(cowplot)
+
+L1<- plot_grid(ASVaccumsub16S,venndiagram16S,
+          labels=c('A','B'), ncol=1, rel_heights = c(1.618,1))
+R1<- plot_grid(nmds2plusleg16S,
+          labels=c('C'))
+L2<- plot_grid(ASVaccumsubITS,venndiagramITS,
+          labels=c('D','E'), ncol=1, rel_heights = c(1.618,1))
+R2<- plot_grid(nmds2pluslegITS,
+          labels=c('F'))
+
+bigp<- plot_grid(L1, R1, L2, R2, labels=NA, ncol=2, rel_widths = c(1, 1.618))
+bigp
+
+plotout <- "Beta_sixway_08.24.2025.tiff"
+agg_tiff(filename=plotout, width=3200, height=3000, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+bigp
+invisible(dev.off())
+
+```
+
+# ALPHA DIVERSITY
+Documentation for `estimate_richness` advises you do not rarefy data beforehand, so I am testing on the `beta` pseqtest version. 
+```{r}
+# 16S alpha diversity
+alpha16S <- estimate_richness(pseqtest16S, split=TRUE, measures=NULL)
+row.names(alpha16S)<- row.names(samdf_16S)
+alpha16S <- merge(samdf_16S, alpha16S, by= 'row.names', all=TRUE)
+row.names(alpha16S) <- alpha16S$Row.names 
+pseq_richplot<- plot_richness(pseqtest16S, x = "substrate", color = "substrate", measures = c("Observed","Shannon"))+ geom_boxplot()
+pseq_richplot
+
+#ITS alpha diversity
+alphaITS <- estimate_richness(pseqtestITS, split=TRUE, measures=NULL)
+row.names(alphaITS)<- row.names(samdf_ITS)
+alphaITS <- merge(samdf_ITS, alphaITS, by= 'row.names', all=TRUE)
+row.names(alphaITS) <- alphaITS$Row.names 
+pseq_richplot<- plot_richness(pseqtestITS, x = "substrate", color = "substrate", measures = c("Observed","Shannon"))+ geom_boxplot()
+pseq_richplot
+              
+```
+
+```{r}
+#Set theme
+theme_set(theme_bw() + theme(
+              plot.title = element_text(size=16, color="black"),#,
+              axis.text.x = element_text(size=12, color="black"),
+              axis.text.y = element_text(size=12, color="black"),
+              axis.title.x = element_text(size=12),
+              axis.title.y = element_text(size=12)#,
+              #legend.text = element_text(size=10),
+              #legend.title = element_text(size=10),
+            #  legend.position = "bottom",
+            #  legend.key=element_blank(),
+            #  legend.key.size = unit(0.5, "cm"),
+            #  legend.spacing.x = unit(0.1, "cm"),
+            #  legend.spacing.y = unit(0.1, "cm"),
+              #panel.background = element_blank(), 
+              #panel.border = element_rect(colour = "black", fill=NA, size=1),
+              #plot.background = element_blank()))
+              ))
+```
+
+```{r}
+sublablist<- c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment')
+sub_labeller <- function(variable,value){
+  return(sublablist[value])
+}
+library(ggpattern) 
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+#myColors <- c("#00BFC4", "#F8766D","#7CAE00")
+#names(myColors) <- levels(alpha$substrate)
+#custom_colors <- scale_colour_manual(name = alpha$substrate, values = myColors)
+#df <- data.frame(level = levels(alpha$substrate), outcome = c("#00BFC4", "#F8766D","#7CAE00"))
+
+stat.test <- alpha16S %>%
+wilcox_test(Observed~substrate) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- alpha16S %>%
+  wilcox_effsize(Observed~substrate)
+effsize
+
+subalpha16S_rich <- ggplot(alpha16S, aes(x=substrate, y=Observed, fill=substrate)) +
+  #facet_grid(. ~ substrate, labeller = sub_labeller)+
+  #scale_x_discrete(labels=c('WET'='Wet', 'DRY'='Dry'))+
+  geom_boxplot()+
+  scale_x_discrete(labels = c('Epilithon','Leaf litter','Sediment'))+
+    scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+ # geom_dotplot(binaxis = "y", stackdir = "center") +
+  #geom_boxplot_pattern(aes(pattern = wet_dry), outlier.shape = NA, show.legend = FALSE) +
+  #scale_pattern_manual(values= c("WET" = "none", "DRY" = "circle"))+
+  #ggpattern::pattern_fill=alpha$substrate+
+  #scale_pattern_fill_manual(values = c('B'="#00BFC4", 'L'="#F8766D", 'S'="#7CAE00", 'W'="#C77CFF"))+
+ # scale_fill_grey(start=0.9, end=0.35) +
+  ylab("ASV Richness")+
+  ylim(0,6200)+
+  #stat_pvalue_manual(stat.test$p.adj)+
+ #geom_signif(comparisons = combn(levels(alpha$substrate),2,simplify = F),
+  #            map_signif_level=TRUE)+
+   geom_signif(comparisons = list(c("L","S")),y_position = 4990,
+              map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+     geom_signif(comparisons = list(c("B","S")),y_position = 5600,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+       geom_signif(comparisons = list(c("B","L")),y_position = 4900,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+ # labs(title = "ASV richness at wet versus dry sites")+
+  #scale_fill_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment'))+
+  #aes(fill=alpha$substrate, show.legend=FALSE)+
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
+              axis.text.y = element_text(size=12, color="black"),
+              axis.title.y = element_text(size=14))+
+  theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
+#  geom_boxplot(aes(fill=alpha$substrate)) +
+subalpha16S_rich
+###############
+
+##################################################
+stat.test <- alpha16S %>%
+wilcox_test(InvSimpson ~substrate) %>%
+ adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- alpha16S %>%
+  wilcox_effsize(InvSimpson~substrate)
+effsize
+
+subalpha16S_InvSimp <- ggplot(alpha16S, aes(x=substrate, y=InvSimpson, fill=substrate)) +
+  #facet_grid(. ~ substrate, labeller = sub_labeller)+
+  #scale_x_discrete(labels=c('WET'='Wet', 'DRY'='Dry'))+
+  geom_boxplot()+
+  scale_x_discrete(labels = c('Epilithon','Leaf litter','Sediment'))+
+      scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+ # geom_dotplot(binaxis = "y", stackdir = "center") +
+  #geom_boxplot_pattern(aes(pattern = wet_dry), outlier.shape = NA, show.legend = FALSE) +
+  #scale_pattern_manual(values= c("WET" = "none", "DRY" = "circle"))+
+  #ggpattern::pattern_fill=alpha$substrate+
+  #scale_pattern_fill_manual(values = c('B'="#00BFC4", 'L'="#F8766D", 'S'="#7CAE00", 'W'="#C77CFF"))+
+ # scale_fill_grey(start=0.9, end=0.35) +
+  ylab("Inv. Simpson")+
+  ylim(0,1400)+
+  #stat_pvalue_manual(stat.test$p.adj)+
+ #geom_signif(comparisons = combn(levels(alpha$substrate),2,simplify = F),
+  #            map_signif_level=TRUE)+
+   geom_signif(comparisons = list(c("L","S")),y_position = 1118,
+              map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+     geom_signif(comparisons = list(c("B","S")),y_position = 1250,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+       geom_signif(comparisons = list(c("B","L")),y_position = 900,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
+              axis.text.y = element_text(size=12, color="black"),
+              axis.title.y = element_text(size=14))+
+  theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
+#  geom_boxplot(aes(fill=alpha$substrate)) +
+subalpha16S_InvSimp
+###############
+
+
+
+stat.test <- alphaITS %>%
+wilcox_test(Observed~substrate) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- alphaITS %>%
+  wilcox_effsize(Observed~substrate)
+effsize
+
+subalphaITS_rich <- ggplot(alphaITS, aes(x=substrate, y=Observed, fill=substrate)) +
+  #facet_grid(. ~ substrate, labeller = sub_labeller)+
+  #scale_x_discrete(labels=c('WET'='Wet', 'DRY'='Dry'))+
+  geom_boxplot()+
+  scale_x_discrete(labels = c('Epilithon','Leaf litter','Sediment'))+
+    scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+ # geom_dotplot(binaxis = "y", stackdir = "center") +
+  #geom_boxplot_pattern(aes(pattern = wet_dry), outlier.shape = NA, show.legend = FALSE) +
+  #scale_pattern_manual(values= c("WET" = "none", "DRY" = "circle"))+
+  #ggpattern::pattern_fill=alpha$substrate+
+  #scale_pattern_fill_manual(values = c('B'="#00BFC4", 'L'="#F8766D", 'S'="#7CAE00", 'W'="#C77CFF"))+
+ # scale_fill_grey(start=0.9, end=0.35) +
+  ylab("ASV Richness")+
+  ylim(0,250)+
+  #stat_pvalue_manual(stat.test$p.adj)+
+ #geom_signif(comparisons = combn(levels(alpha$substrate),2,simplify = F),
+  #            map_signif_level=TRUE)+
+   geom_signif(comparisons = list(c("L","S")),y_position = 190,
+              map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+     geom_signif(comparisons = list(c("B","S")),y_position = 220,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+       geom_signif(comparisons = list(c("B","L")),y_position = 170,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+ # labs(title = "ASV richness at wet versus dry sites")+
+  #scale_fill_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment'))+
+  #aes(fill=alpha$substrate, show.legend=FALSE)+
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
+              axis.text.y = element_text(size=12, color="black"),
+              axis.title.y = element_text(size=14))+
+  theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
+#  geom_boxplot(aes(fill=alpha$substrate)) +
+subalphaITS_rich
+###############
+
+##################################################
+stat.test <- alphaITS %>%
+wilcox_test(InvSimpson ~substrate) %>%
+ adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- alphaITS %>%
+  wilcox_effsize(InvSimpson~substrate)
+effsize
+
+subalphaITS_InvSimp <- ggplot(alphaITS, aes(x=substrate, y=InvSimpson, fill=substrate)) +
+  #facet_grid(. ~ substrate, labeller = sub_labeller)+
+  #scale_x_discrete(labels=c('WET'='Wet', 'DRY'='Dry'))+
+  geom_boxplot()+
+  scale_x_discrete(labels = c('Epilithon','Leaf litter','Sediment'))+
+      scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+ # geom_dotplot(binaxis = "y", stackdir = "center") +
+  #geom_boxplot_pattern(aes(pattern = wet_dry), outlier.shape = NA, show.legend = FALSE) +
+  #scale_pattern_manual(values= c("WET" = "none", "DRY" = "circle"))+
+  #ggpattern::pattern_fill=alpha$substrate+
+  #scale_pattern_fill_manual(values = c('B'="#00BFC4", 'L'="#F8766D", 'S'="#7CAE00", 'W'="#C77CFF"))+
+ # scale_fill_grey(start=0.9, end=0.35) +
+  ylab("Inv. Simpson")+
+  ylim(0,68)+
+  #stat_pvalue_manual(stat.test$p.adj)+
+ #geom_signif(comparisons = combn(levels(alpha$substrate),2,simplify = F),
+  #            map_signif_level=TRUE)+
+   geom_signif(comparisons = list(c("L","S")),y_position = 50,
+              map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+     geom_signif(comparisons = list(c("B","S")),y_position = 59,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+       geom_signif(comparisons = list(c("B","L")),y_position = 51,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+  theme(legend.position='none',axis.text.x = element_text(size=11), axis.title.x = element_blank(),strip.text.x = element_text(size = 11), plot.title = element_text(size=20, color="black"),
+              axis.text.y = element_text(size=12, color="black"),
+              axis.title.y = element_text(size=14))+
+  theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
+#  geom_boxplot(aes(fill=alpha$substrate)) +
+subalphaITS_InvSimp
+###############
+
+
+
+
+
+######################
+library(cowplot)
+#plot_grid(alpha_flowstate, alpha_prcwet, alpha_DA, labels="AUTO", ncol = 1)
+plotout <- "Alpha-4-panel_05-14-2025.tiff"
+agg_tiff(filename=plotout, width=2200, height=2000, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(subalpha16S_rich, subalpha16S_InvSimp, subalphaITS_rich, subalphaITS_InvSimp, labels="AUTO",label_size = 18, ncol = 2)
+invisible(dev.off())
+
+```
+
+```{r}
+## Putting all the pllots together
+
+spacer<- ggdraw()
+vnsp1<-plot_grid(spacer,venndiagram16S,spacer,rel_widths = c(0.3,1,0.3), ncol=3)
+vnsp2<-plot_grid(spacer,venndiagramITS,spacer,rel_widths = c(0.3,1,0.3), ncol=3)
+L1<- plot_grid(ASVaccumsub16S,vnsp1,
+          labels=c('C','D'), ncol=2, rel_widths = c(1,1))
+L2<- plot_grid(ASVaccumsubITS,vnsp2,
+          labels=c('G','H'), ncol=2, rel_widths = c(1,1))
+
+M1<-plot_grid(subalpha16S_rich, subalpha16S_InvSimp,
+          labels=c('E','F'), ncol=2)
+
+M2<-plot_grid(subalphaITS_rich, subalphaITS_InvSimp,
+          labels=c('I','J'), ncol=2)
+
+R1<- plot_grid(nmds2plusleg16S,
+          labels=c('A'))
+
+R2<- plot_grid(nmds2pluslegITS,
+          labels=c('B'))
+
+LM1<- plot_grid(L1, M1, rel_heights = c(0.9,1), ncol=1)
+LM2<- plot_grid(L2, M2, rel_heights = c(0.9,1), ncol=1)
+
+row1<- plot_grid(R1, LM1, ncol=2, rel_widths = c(1.2,1))
+row2<- plot_grid(R2, LM2,  ncol=2, rel_widths = c(1.2,1))
+
+#t1<- ggdraw() + draw_label("Prokaryotes (16S)",fontface = 'bold',  x = 0,  hjust = 0 ) #+theme(   plot.margin = margin(0, 0, 0, 7) )
+#t2<- ggdraw() + draw_label( "Fungi (ITS)", fontface = 'bold', x = 0,  hjust = 0 ) #+ theme(   plot.margin = margin(0, 0, 0, 7) )
+
+bigp<- plot_grid(row1, spacer, row2, labels=NA, ncol=1, rel_heights = c(1.2,0.02,1.2))
+bigp
+
+plotout <- "Overview_08.25.2025.tiff"
+agg_tiff(filename=plotout, width=4500, height=3200, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+bigp
+invisible(dev.off())
+
+
+talp<- plot_grid(R1, R2, LM1, LM2, labels=NA, ncol=2, rel_heights = c(1,1))
+talp
+
+plotout <- "Figure2_08.28.2025.tiff"
+agg_tiff(filename=plotout, width=4200, height=2800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+talp
+invisible(dev.off())
+
+
+```
+
+## 0.2.2
+### PERMANOVA for microhabitat (substrate) types and persistence class
+
+```{r}
+### 16S by substrate
+adonis2(bray_16S ~ substrate, data = samdf_16S, permutations = 99999, by="terms")
+### ITS by substrate
+adonis2(bray_ITS ~ substrate, data = samdf_ITS, permutations = 99999, by="terms")
+
+## 16S intermittent versus ephemeral (strata = substrate)
+adonis2(bray_16S ~ persistence_class, strata=samdf_16S$substrate, data = samdf_16S, permutations = 99999, by="terms")
+## ITS intermittent versus ephemeral (strata = substrate)
+adonis2(bray_ITS ~ persistence_class, strata=samdf_ITS$substrate, data = samdf_ITS, permutations = 99999, by="terms")
+
+## wet dry at ephemeral sites only
+### 16S
+#pseq16S_eph<- subset_samples(pseqtest16S, int_eph=='ephemeral')
+#bray_16S_eph <- phyloseq::distance(pseq16S_eph, method = "bray")
+#sam_16S_eph <- data.frame(sample_data(pseq16S_eph ))
+#adonis2(bray_16S_eph ~ WetDry, strata=sam_16S_eph$substrate, data = sam_16S_eph, permutations = 99999, by="terms")
+
+### ITS
+#pseqITS_eph<- subset_samples(pseqtestITS, int_eph=='ephemeral')
+#bray_ITS_eph <- phyloseq::distance(pseqITS_eph, method = "bray")
+#sam_ITS_eph <- data.frame(sample_data(pseqITS_eph ))
+#adonis2(bray_ITS_eph ~ WetDry, strata=sam_ITS_eph$substrate, data = sam_ITS_eph, permutations = 99999, by="terms")
+```
+
+
+## Mantel and Partial Mantel tests for each substrate
+Bray-Curtis distance of communities ~ In-stream distance between sites + Hellinger distance (for proporitions) for 11-monthh percent wet.
+```{r}
+set.seed(2025)
+####### 16S by distance and percent wet
+pseq16S_11<- subset_samples(pseqtest16S, !is.na(percentwet_11month))
+## Leaf###########################################################################
+### load data
+pseq16S_11L<- subset_samples(pseq16S_11, substrate=="L")
+sample_names(pseq16S_11L) <- pseq16S_11L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseq16S_11L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+#
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+#### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+#### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_dist16SL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_16S_11L <- phyloseq::distance(pseq16S_11L, method = "bray")
+sam_16S_11L <- data.frame(sample_data(pseq16S_11L))
+prcw_dist <- vegdist(sam_16S_11L$percentwet_11month, method = "euclidean")
+
+### Leaf 16S streamdist and prc_wet Mantel
+mantel(bray_16S_11L, stic_dist16SL, method = "pearson", permutations = 9999)
+#mantel.partial(bray_16S_11L, stic_dist16SL, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_16S_11L, prcw_dist, stic_dist16SL, method = "pearson", permutations = 9999)
+############################################
+## Epilithon
+pseq16S_11B<- subset_samples(pseq16S_11, substrate=="B")
+sample_names(pseq16S_11B) <- pseq16S_11B@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseq16S_11B)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_dist16SB <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_16S_11B <- phyloseq::distance(pseq16S_11B, method = "bray")
+sam_16S_11B <- data.frame(sample_data(pseq16S_11B))
+prcw_dist <- vegdist(sam_16S_11B$percentwet_11month, method = "euclidean")
+
+### Epilithic biofilms 16S streamdist and prc_wet Mantel
+mantel(bray_16S_11B, stic_dist16SB, method = "pearson", permutations = 9999)
+#mantel.partial(bray_16S_11B, stic_dist16SB, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_16S_11B, prcw_dist, stic_dist16SB, method = "pearson", permutations = 9999)
+################################################
+
+## Sediment
+pseq16S_11S<- subset_samples(pseq16S_11, substrate=="S")
+sample_names(pseq16S_11S) <- pseq16S_11S@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseq16S_11S)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_dist16SS <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_16S_11S <- phyloseq::distance(pseq16S_11S, method = "bray")
+sam_16S_11S <- data.frame(sample_data(pseq16S_11S))
+prcw_dist <- vegdist(sam_16S_11S$percentwet_11month, method = "euclidean")
+
+### Sediment 16S streamdist and prc_wet Mantel
+mantel(bray_16S_11S, stic_dist16SS, method = "pearson", permutations = 9999)
+#mantel.partial(bray_16S_11S, stic_dist16SS, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_16S_11S, prcw_dist, stic_dist16SS, method = "pearson", permutations = 9999)
+################################################
+
+
+####### ITS
+pseqITS_11<- subset_samples(pseqtestITS, !is.na(percentwet_11month))
+## Leaf###########################################################################
+### load data
+pseqITS_11L<- subset_samples(pseqITS_11, substrate=="L")
+sample_names(pseqITS_11L) <- pseqITS_11L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseqITS_11L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_distITSL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_ITS_11L <- phyloseq::distance(pseqITS_11L, method = "bray")
+sam_ITS_11L <- data.frame(sample_data(pseqITS_11L))
+prcw_dist <- vegdist(sam_ITS_11L$percentwet_11month, method = "euclidean")
+
+### Leaf ITS streamdist and prc_wet Mantel
+mantel(bray_ITS_11L, stic_distITSL, method = "pearson", permutations = 9999)
+#mantel.partial(bray_ITS_11L, stic_distITSL, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_ITS_11L, prcw_dist, stic_distITSL, method = "pearson", permutations = 9999)
+############################################
+## Epilithon
+pseqITS_11B<- subset_samples(pseqITS_11, substrate=="B")
+sample_names(pseqITS_11B) <- pseqITS_11B@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseqITS_11B)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_distITSB <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_ITS_11B <- phyloseq::distance(pseqITS_11B, method = "bray")
+sam_ITS_11B <- data.frame(sample_data(pseqITS_11B))
+prcw_dist <- vegdist(sam_ITS_11B$percentwet_11month, method = "euclidean")
+
+### Epilithic biofilms ITS streamdist and prc_wet Mantel
+mantel(bray_ITS_11B, stic_distITSB, method = "pearson", permutations = 9999)
+#mantel.partial(bray_ITS_11B, stic_distITSB, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_ITS_11B, prcw_dist, stic_distITSB, method = "pearson", permutations = 9999)
+################################################
+
+## Sediment
+pseqITS_11S<- subset_samples(pseqITS_11, substrate=="S")
+sample_names(pseqITS_11S) <- pseqITS_11S@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseqITS_11S)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_distITSS <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_ITS_11S <- phyloseq::distance(pseqITS_11S, method = "bray")
+sam_ITS_11S <- data.frame(sample_data(pseqITS_11S))
+prcw_dist <- vegdist(sam_ITS_11S$percentwet_11month, method = "euclidean")
+
+### pilithic biofilms ITS streamdist and prc_wet Mantel
+mantel(bray_ITS_11S, stic_distITSS, method = "pearson", permutations = 9999)
+#mantel.partial(bray_ITS_11S, stic_distITSS, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_ITS_11S, prcw_dist, stic_distITSS, method = "pearson", permutations = 9999)
+################################################
+
+```
+
+#### Alpha Diverity Across the Stream Continuum
+Here we will use a GLM to test for effects of percent wet while accounting for a spatial covariate (mean distance of each site to all other sites, where headwater sites have higher mean distances than more central/maintstem sites). 
+First, we should test alpha diversity metrics for normality:
+```{r}
+### checking for normality of response variables (required for gaussian)
+# Shapiro-Wilk test for normality
+shapiro_test <- alpha16S %>%
+  group_by(substrate) %>%
+  summarize(p_value = shapiro.test(Observed)$p.value)
+shapiro_test
+
+# Shapiro-Wilk test for normality
+shapiro_test <- alpha16S %>%
+  group_by(substrate) %>%
+  summarize(p_value = shapiro.test(InvSimpson)$p.value)
+shapiro_test
+
+# Shapiro-Wilk test for normality
+shapiro_test <- alphaITS %>%
+  group_by(substrate) %>%
+  summarize(p_value = shapiro.test(Observed)$p.value)
+shapiro_test
+
+# Shapiro-Wilk test for normality
+shapiro_test <- alphaITS %>%
+  group_by(substrate) %>%
+  summarize(p_value = shapiro.test(InvSimpson)$p.value)
+shapiro_test
+
+```
+So, in both 16S and ITS datasets, richness is normal while Inverse Simpson's Index is skewed. Therefore, we'll use Gaussian distribution for richness and Gamma for Inverse Simpson.
+
+```{r}
+#alpha16S
+#alphaITS
+
+### 16S Leaf Percent Wet & Spatial GLM
+alpha16SL<- alpha16S[alpha16S$substrate=='L',]
+alpha16SL<- alpha16SL[!is.na(alpha16SL$percentwet_11month),]
+# 
+glm_model <- glm(alpha16SL$Observed ~ alpha16SL$percentwet_11month,
+                 family = gaussian)  
+summary(glm_model)
+glm_model <- glm(alpha16SL$InvSimpson ~ alpha16SL$percentwet_11month,
+                 family = Gamma)  
+summary(glm_model)
+######################################################
+
+### 16S Epilithon Percent Wet & Spatial GLM
+alpha16SB<- alpha16S[alpha16S$substrate=='B',]
+alpha16SB<- alpha16SB[!is.na(alpha16SB$percentwet_11month),]
+# 
+glm_model <- glm(alpha16SB$Observed ~ alpha16SB$percentwet_11month,
+                 family = gaussian)  
+summary(glm_model)
+glm_model <- glm(alpha16SB$InvSimpson ~ alpha16SB$percentwet_11month,
+                 family = Gamma)  
+summary(glm_model)
+######################################################
+######################################################
+
+### 16S Sediment Percent Wet & Spatial GLM
+alpha16SS<- alpha16S[alpha16S$substrate=='S',]
+alpha16SS<- alpha16SS[!is.na(alpha16SS$percentwet_11month),]
+# 
+glm_model <- glm(alpha16SS$Observed ~ alpha16SS$percentwet_11month,
+                 family = gaussian)  
+summary(glm_model)
+glm_model <- glm(alpha16SS$InvSimpson ~ alpha16SS$percentwet_11month,
+                 family = Gamma)  
+summary(glm_model)
+######################################################
+######################################################
+
+### ITS Leaf Percent Wet & Spatial GLM
+alphaITSL<- alphaITS[alphaITS$substrate=='L',]
+alphaITSL<- alphaITSL[!is.na(alphaITSL$percentwet_11month),]
+# 
+glm_model <- glm(alphaITSL$Observed ~ alphaITSL$percentwet_11month,
+                 family = gaussian)  
+summary(glm_model)
+glm_model <- glm(alphaITSL$InvSimpson ~ alphaITSL$percentwet_11month,
+                 family = Gamma)  
+summary(glm_model)
+######################################################
+
+### ITS Epilithon Percent Wet & Spatial GLM
+alphaITSB<- alphaITS[alphaITS$substrate=='B',]
+alphaITSB<- alphaITSB[!is.na(alphaITSB$percentwet_11month),]
+# 
+glm_model <- glm(alphaITSB$Observed ~ alphaITSB$percentwet_11month,
+                 family = gaussian)  
+summary(glm_model)
+glm_model <- glm(alphaITSB$InvSimpson ~ alphaITSB$percentwet_11month,
+                 family = Gamma)  
+summary(glm_model)
+######################################################
+######################################################
+
+### ITS Sediment Percent Wet & Spatial GLM
+alphaITSS<- alphaITS[alphaITS$substrate=='S',]
+alphaITSS<- alphaITSS[!is.na(alphaITSS$percentwet_11month),]
+# 
+glm_model <- glm(alphaITSS$Observed ~ alphaITSS$percentwet_11month,
+                 family = gaussian)  
+summary(glm_model)
+glm_model <- glm(alphaITSS$InvSimpson ~ alphaITSS$percentwet_11month,
+                 family = Gamma)  
+summary(glm_model)
+######################################################
+######################################################
+
+```
+
+#######################
+
+# Leaf type effects
+Now, we have presence/absence of leaf types, and can use this to make a Jaccard's distance matrix and test for effects of leaf types on microbial communities while controlling for other variables via Partial Mantel test. 
+
+Tests for Table S2 below:
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+### load data
+pseq16S_L<- subset_samples(pseqtest16S, substrate=="L")
+sample_names(pseq16S_L) <- pseq16S_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseq16S_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_dist16SL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_16S_L <- phyloseq::distance(pseq16S_L, method = "bray")
+sam_16S_L <- data.frame(sample_data(pseq16S_L))
+#prcw_dist <- vegdist(sam_16S_L$percentwet_month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_16S_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+### Leaf 16S streamdist and prc_wet Mantel
+
+# TABLE S2A
+mantel(leafdist, stic_dist16SL, method = "pearson", permutations = 9999)
+
+# TABLE S2C
+mantel(bray_16S_L, leafdist, method = "pearson", permutations = 9999)
+
+# TABLE S2D
+#mantel.partial(bray_16S_L, stic_dist16SL, prcw_dist, method = "pearson", permutations = 999)
+mantel.partial(bray_16S_L, leafdist, stic_dist16SL, method = "pearson", permutations = 99999)
+
+```
+
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+### load data
+pseqITS_L<- subset_samples(pseqtestITS, substrate=="L")
+sample_names(pseqITS_L) <- pseqITS_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseqITS_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_distITSL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_ITS_L <- phyloseq::distance(pseqITS_L, method = "bray")
+sam_ITS_L <- data.frame(sample_data(pseqITS_L))
+#prcw_dist <- vegdist(sam_ITS_L$percentwet_month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_ITS_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+
+# TABLE S2F
+mantel(bray_ITS_L, leafdist, method = "pearson", permutations = 9999)
+
+# TABLE S2G
+mantel.partial(bray_ITS_L, leafdist, stic_distITSL, method = "pearson", permutations = 99999)
+
+```
+
+# checking water permanence versus leaf types
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+pseq16S_11<- subset_samples(pseqtest16S, !is.na(percentwet_11month))
+### load data
+pseq16S_L<- subset_samples(pseq16S_11, substrate=="L")
+sample_names(pseq16S_L) <- pseq16S_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseq16S_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_dist16SL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_16S_L <- phyloseq::distance(pseq16S_L, method = "bray")
+sam_16S_L <- data.frame(sample_data(pseq16S_L))
+prcw_dist <- vegdist(sam_16S_L$percentwet_11month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_16S_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+## CHECKING leaf type versus percent wet
+
+### Leaf 16S leaf types and prc_wet Mantel
+# TABLE S2B
+mantel(leafdist, prcw_dist, method = "pearson", permutations = 9999)
+
+mantel(bray_16S_L, leafdist, method = "pearson", permutations = 9999)
+
+#mantel.partial(bray_16S_L, stic_dist16SL, prcw_dist, method = "pearson", permutations = 999)
+
+# TABLE S2E
+mantel.partial(bray_16S_L, leafdist, prcw_dist, method = "pearson", permutations = 99999)
+
+```
+
+```{r}
+### First select leaf samples and remake bray and spatial matrices...
+set.seed(2025)
+### load data
+pseqITS_11<- subset_samples(pseqtestITS, !is.na(percentwet_11month))
+pseqITS_L<- subset_samples(pseqITS_11, substrate=="L")
+sample_names(pseqITS_L) <- pseqITS_L@sam_data$siteId
+#get sample order
+sample_order <- sample_names(pseqITS_L)
+## subset in-stream distance for these samples
+stic_dist <- read.csv("river_dist_stics.csv")
+
+complete_pairs <- expand.grid(Row = sample_order, Column = sample_order,stringsAsFactors = FALSE)
+### merge sample list and pairwise distances
+geo_complete <- merge(complete_pairs, stic_dist, by = c("Row", "Column"), all.x = TRUE)
+### set diagonal to 0
+geo_complete$Distance_m[geo_complete$Row == geo_complete$Column] <- 0
+missing_rev <- is.na(geo_complete$Distance_m)
+geo_complete$Distance_m[missing_rev] <- geo_complete$Distance_m[match(paste(geo_complete$Column[missing_rev], geo_complete$Row[missing_rev]),paste(geo_complete$Row, geo_complete$Column))]
+geo_matrix <- pivot_wider(geo_complete, names_from = Column, values_from = Distance_m, values_fill = list(Distance_m = NA)) %>% as.data.frame() %>% column_to_rownames("Row") %>% as.matrix()
+geo_matrix <- geo_matrix[sample_order, sample_order]
+stic_distITSL <- as.dist(geo_matrix)
+##### Now spatial matrix looks correct, on to community and prc wet
+bray_ITS_L <- phyloseq::distance(pseqITS_L, method = "bray")
+sam_ITS_L <- data.frame(sample_data(pseqITS_L))
+#prcw_dist <- vegdist(sam_ITS_L$percentwet_month, method = "euclidean")
+
+### Now, extract leaf presence absence, and remove singleton leaf types
+leaf_pres.abs<- sam_ITS_L[,22:41]
+leaf_pres.abs<- leaf_pres.abs[,colSums(leaf_pres.abs)>1]
+leaf_pres.abs<- leaf_pres.abs[,colnames(leaf_pres.abs)!='Unknown']
+
+## making Jaccard's distance matrix from leaf type presence/absence in each composite leaf sample
+leafdist<- vegdist(leaf_pres.abs, method = "jaccard")
+
+# TABLE S2H
+mantel.partial(bray_ITS_L, leafdist, prcw_dist, method = "pearson", permutations = 99999)
+```
+

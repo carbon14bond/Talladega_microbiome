@@ -1,0 +1,2699 @@
+---
+title: "Analysis_0.3_Taxonomic_groups"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+# Microbial Community Analysis: Talladega Forest Non-perennial Stream Network
+
+## Analysis_0.3: Microbial taxa across the stream network
+
+### Introduction
+Following the bioinformatics processing and Analysis 0.1 and 0.2, we will now look into the taxonomic groups of prokaryotes and fungi occuring in the stream. See the next analysis (0.4) for generalized linear latent variable models for top genera, species, or PICRUSt2-based functional trait assignment.
+
+## Setup
+```{r, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/chunk/Talladega_synoptic/Analysis")
+knitr::opts_knit$set(root.dir = "/Users/chunk/Talladega_synoptic/Analysis")
+options(knitr.duplicate.label = "allow") ### so I don't have to give chunks unique names
+```
+
+```{r}
+#library(dada2)
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(pheatmap)
+library(GUniFrac)
+library(pals)
+library(RColorBrewer)
+library(ragg)
+library(ggpubr)
+
+#Set theme
+theme_set(theme_bw() + theme(
+              plot.title = element_text(size=20, color="black"),
+              axis.text.x = element_text(size=15, color="black"),
+              axis.text.y = element_text(size=15, color="black"),
+              axis.title.x = element_text(size=12),
+              axis.title.y = element_text(size=12),
+              legend.text = element_text(size=12),
+              legend.title = element_text(size=15),
+            #  legend.position = "bottom",
+            #  legend.key=element_blank(),
+            #  legend.key.size = unit(0.5, "cm"),
+            #  legend.spacing.x = unit(0.1, "cm"),
+            #  legend.spacing.y = unit(0.1, "cm"),
+              panel.background = element_blank(), 
+              #panel.border = element_rect(colour = "black", fill=NA, size=1),
+              plot.background = element_blank()))
+```
+
+## Load phyloseq objects
+```{r}
+#prokaryotes
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtest16S.rdata")
+pseqtest16S
+
+#fungi
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtestITS.rdata")
+pseqtestITS
+
+## Cutting the single beaver pond site, its an outlier, the only permanent lentic site
+pseqtest16S <- subset_samples(pseqtest16S, siteId != "TLMBP")
+pseqtestITS <- subset_samples(pseqtestITS, siteId != "TLMBP")
+
+# extract sampe data
+samdf_16S <- data.frame(sample_data(pseqtest16S))
+samdf_ITS <- data.frame(sample_data(pseqtestITS))
+```
+
+## 0.3.1 
+### Relative Abundances of Major Prokaryotic Taxa
+First we will process and visualize the relative abundances of major taxonomic groups, and test a few hypotheses about our major taxa. 
+
+#### 0.3.1.1
+##### Prokaryotes: Bacteria vs. Archaea
+We want to compare the relative abundance of Bacteria and Archaea in order to test the hypothesis that 
+1) relative abundance of Archaea is higher in sediments than in other substrates, and 
+2) that the relative abundance of Archaea is positively correlated with water permanence
+
+```{r}
+kingcount16S <- otu_table(tax_glom(pseqtest16S, taxrank="Kingdom"), taxa_are_rows = FALSE)
+kingcount16S <- t(kingcount16S)
+#make vector of phyla names to set as row names
+kingcount16S_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Kingdom"))[,1]) 
+rownames(kingcount16S) <- as.vector(kingcount16S_vec)
+## convert to percent
+kingprop16S <- apply(kingcount16S, 2, function(x) x/sum(x)*100)
+
+### merge with metadata
+kingmerge <- merge(samdf_16S, t(kingprop16S),
+                  by="row.names", all=TRUE)
+rownames(kingmerge) <- kingmerge[,1]
+kingmerge <- kingmerge[,-1]
+
+### Overall Kingdom percentages
+mean(kingmerge$Bacteria)
+mean(kingmerge$Archaea)
+
+
+
+library(rstatix)
+stat.test <- kingmerge %>%
+wilcox_test(Archaea~substrate) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- kingmerge %>%
+  wilcox_effsize(Archaea~substrate)
+effsize
+
+cor_summary <- kingmerge[!is.na(kingmerge$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Archaea, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Archaea, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- kingmerge[!is.na(kingmerge$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Archaea, CH4_avg, method = "spearman"),
+    p_value = cor.test(Archaea, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+```
+
+```{}
+subalpha16S_rich <- ggplot(alpha16S, aes(x=substrate, y=Observed, fill=substrate)) +
+  #facet_grid(. ~ substrate, labeller = sub_labeller)+
+  #scale_x_discrete(labels=c('WET'='Wet', 'DRY'='Dry'))+
+  geom_boxplot()+
+  scale_x_discrete(labels = c('Epilithon','Leaf litter','Sediment'))+
+    scale_fill_manual(values=myColors, name='Substrate:', labels=c('Epilithon', 'Leaf litter', 'Sediment'))+
+ # geom_dotplot(binaxis = "y", stackdir = "center") +
+  #geom_boxplot_pattern(aes(pattern = wet_dry), outlier.shape = NA, show.legend = FALSE) +
+  #scale_pattern_manual(values= c("WET" = "none", "DRY" = "circle"))+
+  #ggpattern::pattern_fill=alpha$substrate+
+  #scale_pattern_fill_manual(values = c('B'="#00BFC4", 'L'="#F8766D", 'S'="#7CAE00", 'W'="#C77CFF"))+
+ # scale_fill_grey(start=0.9, end=0.35) +
+  ylab("ASV Richness")+
+  ylim(0,6200)+
+  #stat_pvalue_manual(stat.test$p.adj)+
+ #geom_signif(comparisons = combn(levels(alpha$substrate),2,simplify = F),
+  #            map_signif_level=TRUE)+
+   geom_signif(comparisons = list(c("L","S")),y_position = 4990,
+              map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+     geom_signif(comparisons = list(c("B","S")),y_position = 5600,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+       geom_signif(comparisons = list(c("B","L")),y_position = 4900,
+            map_signif_level=c("***"=0.001/3, "**"=0.01/3, "*"=0.05/3))+
+ # labs(title = "ASV richness at wet versus dry sites")+
+  #scale_fill_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment'))+
+  #aes(fill=alpha$substrate, show.legend=FALSE)+
+  theme(legend.position='none',axis.text.x = element_text(size=12), axis.title.x = element_blank(),strip.text.x = element_text(size = 12), plot.title = element_text(size=20, color="black"),
+              axis.text.y = element_text(size=12, color="black"),
+              axis.title.y = element_text(size=14))+
+  theme(plot.margin = unit(c(2, 2, 2, 2), "lines")) 
+#  geom_boxplot(aes(fill=alpha$substrate)) +
+subalpha16S_rich
+```
+
+
+#### Prokaryote phyla and classes
+
+```{r}
+#make taxonomy object by phylum
+phyla16S_counts_tab <- otu_table(tax_glom(pseqtest16S, taxrank="Phylum"), taxa_are_rows = FALSE)
+phyla16S_counts_tab <- t(phyla16S_counts_tab)
+#make vector of phyla names to set as row names
+phyla16S_tax_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Phylum"))[,2]) 
+rownames(phyla16S_counts_tab) <- as.vector(phyla16S_tax_vec)
+phyla16S_counts_tab
+write.csv(phyla16S_counts_tab, 'phyla16S_counts_08.28.2025.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtest16S@otu_table
+#determine the number of unclassified seqs at the phylum level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(phyla16S_counts_tab)
+#Add a row of "unclassified" to the phylum count table
+phyla16S_and_unidentified_counts_tab <- rbind(phyla16S_counts_tab, "Unclassified_Phylum"=unclassified_tax_counts)
+
+```
+
+### split Pseudomonadota (Proteobacteria) into classes
+Apparently, in the time since I updated SILVA, Proteobacteria has been changed to 'Pseudomonadota', so I've had to update this code a bit. 
+
+```{r}
+#remove Proteobacteria for the purpose of separating it into classes later
+temp_major16S_taxa_counts_tab <- 
+  phyla16S_and_unidentified_counts_tab[!row.names(phyla16S_and_unidentified_counts_tab)
+                                    %in% "Pseudomonadota",]
+#make count table broken down by class
+class16S_counts_tab <- otu_table(tax_glom(t(pseqtest16S), taxrank="Class"))
+#make table containing phylum and class data
+class16S_tax_phy_tab <- tax_table(tax_glom(t(pseqtest16S), taxrank="Class"))
+phy_tmp_vec <- class16S_tax_phy_tab[,2]
+class16S_tmp_vec <- class16S_tax_phy_tab[,3]
+rows_tmp <- row.names(class16S_tax_phy_tab)
+class16S_tax_tab <- data.frame("Phylum"=phy_tmp_vec, "Class"=class16S_tmp_vec, row.names = rows_tmp)
+#make vector of just the Proteobacteria classes
+Pseudomonad_classes_vec <- as.vector(class16S_tax_tab[class16S_tax_tab$Phylum=="Pseudomonadota", "Class"])
+row.names(class16S_counts_tab) <- as.vector(class16S_tax_tab$Class)
+#make table of Proteobacteria classes
+Pseudomonad_class_counts_tab <- class16S_counts_tab[row.names(class16S_counts_tab) %in% Pseudomonad_classes_vec, ]
+#make table ofProteobacteria not identified to the class level
+Pseudomonad_no_class_annotated_counts <- 
+  phyla16S_and_unidentified_counts_tab[row.names(phyla16S_and_unidentified_counts_tab) %in% "Pseudomonadota",]-
+  colSums(Pseudomonad_class_counts_tab)
+#Now combine the tables
+major16S_taxa_counts_tab <- rbind(temp_major16S_taxa_counts_tab, Pseudomonad_class_counts_tab,
+                               "Unclassified_Pseudomonadota"=Pseudomonad_no_class_annotated_counts)
+head(major16S_taxa_counts_tab)
+
+```
+
+
+```{r}
+write.csv(major16S_taxa_counts_tab, "major16Staxa_count_rar_16S_08.28.2025.csv")
+#Check that all sequences are accounted for
+identical(colSums(major16S_taxa_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+major16S_taxa_proportions_tab <- apply(major16S_taxa_counts_tab, 2, function(x) x/sum(x)*100)
+#colSums(major16S_taxa_proportions_tab)
+write.csv(major16S_taxa_proportions_tab, "major16Staxa_relative abundance_rar_16S_08.28.2025.csv")
+
+```
+
+
+by family
+```{r}
+#make taxonomy object by class
+family16S_counts_tab <- otu_table(tax_glom(pseqtest16S, taxrank="Family"), taxa_are_rows = FALSE)
+family16S_counts_tab <- t(family16S_counts_tab)
+#make vector of class names to set as row names
+family16S_tax_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Family"))[,5]) 
+rownames(family16S_counts_tab) <- as.vector(family16S_tax_vec)
+
+#determine the number of unclassified seqs at the family level
+unclassified_family16S_counts <- colSums(t(asv_counts)) - colSums(family16S_counts_tab)
+unclassified_family16S_counts
+#Add a row of "unclassified" to the family count table
+family16S_and_unidentified_counts_tab <- rbind(family16S_counts_tab, 
+                                            "Unclassified_family"=unclassified_family16S_counts)
+write.csv(family16S_and_unidentified_counts_tab, "family16S raw abundance_rar_16S_08.28.2025.csv")
+#Check that all seqs are accounted for.
+
+identical(colSums(family16S_and_unidentified_counts_tab), rowSums(asv_counts))
+
+#Convert totals to relative abundance
+family16S_proportions_tab <- apply(family16S_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(family16S_proportions_tab, "family relative abundance_rar_16S_08.28.2025.csv")
+
+```
+
+
+```{r}
+#Merge metadata, phylum, and family abundances
+#phy_and_fam <- merge(t(major16S_taxa_counts_tab), t(family_and_unidentified_counts_tab),
+#                  by="row.names", all=TRUE)
+phy_and_fam <- merge(t(major16S_taxa_proportions_tab), t(family16S_proportions_tab),
+                  by="row.names", all=TRUE)
+phyfam <- phy_and_fam[,-1]
+rownames(phyfam) <- phy_and_fam[,1]
+tax_merge <- merge(samdf_16S, phyfam,
+                  by="row.names", all=TRUE)
+taxmerge16S <- tax_merge[,-1]
+rownames(taxmerge16S) <- tax_merge[,1]
+write.csv(tax_merge, "TALSYN_taxmerge16S_08.28.2025.csv")
+
+```
+
+
+Quick test
+
+```{}
+setwd('/Users/chunk/Talladega_synoptic/16S')
+tax_merge<-read.csv("TALSYN_taxmerge16S_05.21.25.csv", row.names=1)
+
+library(rstatix)
+stat.test <- tax_merge %>%
+  group_by(substrate) %>%
+wilcox_test(Cyanobacteria~int_eph) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test 
+
+stat.test <- tax_merge %>%
+  group_by(substrate) %>%
+wilcox_test(Cyanobacteria~dei) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test 
+
+stat.test <- tax_merge %>%
+  group_by(substrate) %>%
+wilcox_test(Crenarchaeota~int_eph) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test 
+
+stat.test <- tax_merge %>%
+  group_by(substrate) %>%
+wilcox_test(Desulfobacterota~int_eph) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test 
+
+```
+
+
+
+
+###Phylum-Class BARPLOT
+```{r}
+#major16S taxa, mean percent abundances across all samples:
+rowMeans(major16S_taxa_proportions_tab)
+
+#Select taxa that make up >90% of the total sequences
+
+phyla16Strim <- data.frame(major16S_taxa_proportions_tab[c("Alphaproteobacteria","Gammaproteobacteria","Cyanobacteriota","Actinomycetota","Myxococcota","Verrucomicrobiota","Bacteroidota","Acidobacteriota","Bacillota","Planctomycetota","Thermodesulfobacteriota","Chloroflexota", "Methanobacteriota"), ])
+#write.csv(phylatrim_t,"/Users/chunk/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/run_2/outputs/phylatrim.csv")
+#write.csv(major16S_taxa_proportions_tab,"/Users/chunk/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/major16Staxa.csv")
+#major16Staxa <- read.csv("~/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/major16Staxa.csv", row.names=1)
+#View(major16Staxa)
+#phylatrim <- read.csv("~/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/phylatrimt.csv", row.names=1)
+#View(phylatrim)
+
+#Create an "other" category for the phyla not retained
+filtered_proportions <- colSums(major16S_taxa_proportions_tab) - 
+  colSums(phyla16Strim)
+phyla16Strim <- rbind(phyla16Strim, "Other"=filtered_proportions)
+phyla16Strim
+
+#Add taxa names as a column
+phyla16Strim$Major_Taxa <- row.names(phyla16Strim)
+#transform into long format
+phyla16Slong <- gather(phyla16Strim, Sample, Proportion, -Major_Taxa)
+phyla16Slong$Sample <- gsub("X","",phyla16Slong$Sample)
+#add metadata
+#metadatap <- read.csv("~/Documents/DADA2/DADA2_package_test/Kz_Syn_ITS/metadata_punc.csv", row.names=1, stringsAsFactors=TRUE)
+#View(metadata_punc)
+#names(metadatap)
+```
+
+```{r}
+## [1] "substrate" "WetDry"
+phyla16Smet<-data.frame("Sample"=row.names(samdf_16S),
+                     "Substrate"=samdf_16S$substrate,
+                     "Site_type"=samdf_16S$persistence_class_state,
+                     stringsAsFactors=T)
+#merge metadata with major taxa data
+phyla16Slong <- merge(phyla16Slong, phyla16Smet)
+#Summarize by depth and hydration
+phyla16S_summary <- 
+  phyla16Slong %>% # the names of the new data frame and the data frame to be summarised
+  group_by(Substrate, Site_type, Major_Taxa) %>%   # the grouping variable
+  summarise(mean_prop = mean(Proportion))  # calculates the mean of each group
+
+phyla16S_summary
+
+phyla16S_summary$Substrate <- factor(phyla16S_summary$Substrate,
+                                 levels=c("L","B","S")) #reorder variables
+
+#phyla16S_summary$Wet.Dry <- factor(phyla16S_summary$Wet.Dry, levels= c("wet","dry")) #reorder variables
+phyla16S_summary$Major_Taxa <- factor(phyla16S_summary$Major_Taxa, levels= rev(c("Alphaproteobacteria","Gammaproteobacteria","Cyanobacteriota","Actinomycetota","Myxococcota","Verrucomicrobiota","Bacteroidota","Acidobacteriota","Bacillota","Planctomycetota","Thermodesulfobacteriota","Chloroflexota", "Methanobacteriota","Other")))
+
+#color palette
+sublab<- c("Leaf litter","Epilithic biofilms","Benthic sediment")
+names(sublab)<- c("L","B","S")
+
+pal12 <- rev(cols25(n=14)) #set n= to the number of taxa you are plotting
+#make stacked bar plot
+phylum16S_bar <- ggplot(phyla16S_summary, aes(x = Site_type, y = mean_prop, fill = Major_Taxa))+
+  geom_bar(stat = "identity", col=I("black")) +
+  scale_fill_manual(values=pal12)+
+  guides(fill=guide_legend(ncol=1))+
+  facet_wrap(~Substrate, labeller = labeller(Substrate=sublab), nrow=1, scales="free_x") +
+  labs(x=NULL,y="Relative abundance (%)",
+       fill="Major taxa")+
+  #scale_facet_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment', 'W'='Surface water'))+
+  theme(axis.text.x = element_text(angle=60, hjust=1), legend.position = "right")+
+  theme(text=element_text(size=18), #change font size of all text
+        axis.text=element_text(size=16), #change font size of axis text
+        axis.title=element_text(size=16), #change font size of axis titles
+        plot.title=element_text(size=16), #change font size of plot title
+        legend.text=element_text(size=16), #change font size of legend text
+        strip.text.x = element_text(size = 16),
+        legend.title=element_text(size=16)) #change font size of legend title  
+phylum16S_bar
+ 
+#c(180,100) *
+#  0.0394 * # convert mm to inch
+#  600 # convert to pixels
+## [1] 4255.2 2364.0
+plotout <- "phylum16S_barplot__08.28.2025.tiff"
+agg_tiff(filename=plotout, width=4255, height=2364, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+phylum16S_bar
+invisible(dev.off())
+```
+##################################################
+
+##################################################
+
+
+#### 0.3.1.2
+### Fungal Taxonomy
+
+#### Fungal phyla and classes
+
+```{r}
+#make taxonomy object by phylum
+phylaITS_counts_tab <- otu_table(tax_glom(pseqtestITS, taxrank="Phylum"), taxa_are_rows = FALSE)
+phylaITS_counts_tab <- t(phylaITS_counts_tab)
+#make vector of phyla names to set as row names
+phylaITS_tax_vec <- as.vector(tax_table(tax_glom(pseqtestITS, taxrank="Phylum"))[,2]) 
+rownames(phylaITS_counts_tab) <- as.vector(phylaITS_tax_vec)
+phylaITS_counts_tab
+write.csv(phylaITS_counts_tab, 'phylaITS_counts_08.28.2025.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtestITS@otu_table
+#determine the number of unclassified seqs at the phylum level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(phylaITS_counts_tab)
+#Add a row of "unclassified" to the phylum count table
+phylaITS_and_unidentified_counts_tab <- rbind(phylaITS_counts_tab, "Unclassified_Phylum"=unclassified_tax_counts)
+
+```
+
+### split Ascomycota
+
+```{r}
+#remove Proteobacteria for the purpose of separating it into classes later
+temp_majorITS_taxa_counts_tab <- 
+  phylaITS_and_unidentified_counts_tab[!row.names(phylaITS_and_unidentified_counts_tab)
+                                    %in% "Ascomycota",]
+#make count table broken down by class
+classITS_counts_tab <- otu_table(tax_glom(t(pseqtestITS), taxrank="Class"))
+#make table containing phylum and class data
+classITS_tax_phy_tab <- tax_table(tax_glom(t(pseqtestITS), taxrank="Class"))
+phy_tmp_vec <- classITS_tax_phy_tab[,2]
+classITS_tmp_vec <- classITS_tax_phy_tab[,3]
+rows_tmp <- row.names(classITS_tax_phy_tab)
+classITS_tax_tab <- data.frame("Phylum"=phy_tmp_vec, "Class"=classITS_tmp_vec, row.names = rows_tmp)
+#make vector of just the Proteobacteria classes
+Ascomycete_classes_vec <- as.vector(classITS_tax_tab[classITS_tax_tab$Phylum=="Ascomycota", "Class"])
+row.names(classITS_counts_tab) <- as.vector(classITS_tax_tab$Class)
+#make table of Proteobacteria classes
+Ascomycete_class_counts_tab <- classITS_counts_tab[row.names(classITS_counts_tab) %in% Ascomycete_classes_vec, ]
+#make table ofProteobacteria not identified to the class level
+Ascomycete_no_class_annotated_counts <- 
+  phylaITS_and_unidentified_counts_tab[row.names(phylaITS_and_unidentified_counts_tab) %in% "Ascomycota",]-
+  colSums(Ascomycete_class_counts_tab)
+#Now combine the tables
+majorITS_taxa_counts_tab <- rbind(temp_majorITS_taxa_counts_tab, Ascomycete_class_counts_tab,
+                               "Unclassified_Ascomycota"=Ascomycete_no_class_annotated_counts)
+head(majorITS_taxa_counts_tab)
+
+```
+
+
+```{r}
+write.csv(majorITS_taxa_counts_tab, "majorITStaxa_count_rar_ITS_08.28.2025.csv")
+#Check that all sequences are accounted for
+identical(colSums(majorITS_taxa_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+majorITS_taxa_proportions_tab <- apply(majorITS_taxa_counts_tab, 2, function(x) x/sum(x)*100)
+#colSums(majorITS_taxa_proportions_tab)
+write.csv(majorITS_taxa_proportions_tab, "majorITStaxa_relative abundance_rar_ITS_08.28.2025.csv")
+
+```
+
+
+by family
+```{r}
+#make taxonomy object by class
+familyITS_counts_tab <- otu_table(tax_glom(pseqtestITS, taxrank="Family"), taxa_are_rows = FALSE)
+familyITS_counts_tab <- t(familyITS_counts_tab)
+#make vector of class names to set as row names
+familyITS_tax_vec <- as.vector(tax_table(tax_glom(pseqtestITS, taxrank="Family"))[,5]) 
+rownames(familyITS_counts_tab) <- as.vector(familyITS_tax_vec)
+
+#determine the number of unclassified seqs at the family level
+unclassified_familyITS_counts <- colSums(t(asv_counts)) - colSums(familyITS_counts_tab)
+unclassified_familyITS_counts
+#Add a row of "unclassified" to the family count table
+familyITS_and_unidentified_counts_tab <- rbind(familyITS_counts_tab, 
+                                            "Unclassified_family"=unclassified_familyITS_counts)
+write.csv(familyITS_and_unidentified_counts_tab, "familyITS raw abundance_rar_ITS_08.28.2025.csv")
+#Check that all seqs are accounted for.
+
+identical(colSums(familyITS_and_unidentified_counts_tab), rowSums(asv_counts))
+
+#Convert totals to relative abundance
+familyITS_proportions_tab <- apply(familyITS_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(familyITS_proportions_tab, "family relative abundance_rar_ITS_08.28.2025.csv")
+
+```
+
+
+```{r}
+#Merge metadata, phylum, and family abundances
+#phy_and_fam <- merge(t(majorITS_taxa_counts_tab), t(family_and_unidentified_counts_tab),
+#                  by="row.names", all=TRUE)
+phy_and_fam <- merge(t(majorITS_taxa_proportions_tab), t(familyITS_proportions_tab),
+                  by="row.names", all=TRUE)
+phyfam <- phy_and_fam[,-1]
+rownames(phyfam) <- phy_and_fam[,1]
+tax_merge <- merge(samdf_ITS, phyfam,
+                  by="row.names", all=TRUE)
+taxmergeITS <- tax_merge[,-1]
+rownames(taxmergeITS) <- tax_merge[,1]
+write.csv(tax_merge, "TALSYN_taxmergeITS_08.28.2025.csv")
+
+```
+
+###Phylum-Class BARPLOT
+```{r}
+#majorITS taxa, mean percent abundances across all samples:
+rowMeans(majorITS_taxa_proportions_tab)
+
+#Select taxa that make up >90% of the total sequences
+
+phylaITStrim <- data.frame(majorITS_taxa_proportions_tab[c("Basidiomycota","Mucoromycota","Mortierellomycota","Rozellomycota","Leotiomycetes","Dothideomycetes","Sordariomycetes","Eurotiomycetes","Lecanoromycetes","Unclassified_Ascomycota","Unclassified_Phylum"), ])
+
+#Create an "other" category for the phyla not retained
+filtered_proportions <- colSums(majorITS_taxa_proportions_tab) - 
+  colSums(phylaITStrim)
+phylaITStrim <- rbind(phylaITStrim, "Other"=filtered_proportions)
+phylaITStrim
+
+#Add taxa names as a column
+phylaITStrim$Major_Taxa <- row.names(phylaITStrim)
+#transform into long format
+phylaITSlong <- gather(phylaITStrim, Sample, Proportion, -Major_Taxa)
+phylaITSlong$Sample <- gsub("X","",phylaITSlong$Sample)
+
+```
+
+```{r}
+## [1] "substrate" "WetDry"
+phylaITSmet<-data.frame("Sample"=row.names(samdf_ITS),
+                     "Substrate"=samdf_ITS$substrate,
+                     "Site_type"=samdf_ITS$persistence_class_state,
+                     stringsAsFactors=T)
+#merge metadata with major taxa data
+phylaITSlong <- merge(phylaITSlong, phylaITSmet)
+#Summarize by depth and hydration
+phylaITS_summary <- 
+  phylaITSlong %>% # the names of the new data frame and the data frame to be summarised
+  group_by(Substrate, Site_type, Major_Taxa) %>%   # the grouping variable
+  summarise(mean_prop = mean(Proportion))  # calculates the mean of each group
+
+phylaITS_summary
+
+phylaITS_summary$Substrate <- factor(phylaITS_summary$Substrate,
+                                 levels=c("L","B","S")) #reorder variables
+
+#phylaITS_summary$Wet.Dry <- factor(phylaITS_summary$Wet.Dry, levels= c("wet","dry")) #reorder variables
+phylaITS_summary$Major_Taxa <- factor(phylaITS_summary$Major_Taxa, levels= rev(c("Basidiomycota","Mucoromycota","Mortierellomycota","Rozellomycota","Leotiomycetes","Dothideomycetes","Sordariomycetes","Eurotiomycetes","Lecanoromycetes","Unclassified_Ascomycota","Unclassified_Phylum","Other")))
+
+#color palette
+sublab<- c("Leaf litter","Epilithic biofilms","Benthic sediment")
+names(sublab)<- c("L","B","S")
+
+pal12 <- rev(cols25(n=12)) #set n= to the number of taxa you are plotting
+#make stacked bar plot
+phylumITS_bar <- ggplot(phylaITS_summary, aes(x = Site_type, y = mean_prop, fill = Major_Taxa))+
+  geom_bar(stat = "identity", col=I("black")) +
+  scale_fill_manual(values=pal12)+
+  guides(fill=guide_legend(ncol=1))+
+  facet_wrap(~Substrate, labeller = labeller(Substrate=sublab), nrow=1, scales="free_x") +
+  labs(x=NULL,y="Relative abundance (%)",
+       fill="Major taxa")+
+  #scale_facet_discrete(labels=c('B'='Epilithic biofilms', 'L'='Leaf litter', 'S'='Benthic sediment', 'W'='Surface water'))+
+  theme(axis.text.x = element_text(angle=60, hjust=1), legend.position = "right")+
+  theme(text=element_text(size=18), #change font size of all text
+        axis.text=element_text(size=16), #change font size of axis text
+        axis.title=element_text(size=16), #change font size of axis titles
+        plot.title=element_text(size=16), #change font size of plot title
+        legend.text=element_text(size=16), #change font size of legend text
+        strip.text.x = element_text(size = 16),
+        legend.title=element_text(size=16)) #change font size of legend title  
+phylumITS_bar
+ 
+#c(180,100) *
+#  0.0394 * # convert mm to inch
+#  600 # convert to pixels
+## [1] 4255.2 2364.0
+plotout <- "phylumITS_barplot__08.28.2025.tiff"
+agg_tiff(filename=plotout, width=4255, height=2364, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+phylumITS_bar
+invisible(dev.off())
+```
+```{r}
+library(cowplot)
+spacer<- ggdraw()
+plotout <- "taxa-2-panel_08.28.2025.tiff"
+agg_tiff(filename=plotout, width=4255, height=4728, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(phylum16S_bar,spacer, phylumITS_bar,rel_heights = c(1,0.05,1) , labels=c('A','','B'),label_size = 18, ncol = 1)
+invisible(dev.off())
+```
+
+
+##
+
+```{r}
+library(rstatix)
+stat.test <- kingmerge %>%
+wilcox_test(Archaea~substrate) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <- kingmerge %>%
+  wilcox_effsize(Archaea~substrate)
+effsize
+
+cor_summary <- taxmerge16S[!is.na(taxmerge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteriaceae, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Methanobacteriaceae, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- taxmerge16S[!is.na(taxmerge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteriaceae, CH4_avg, method = "spearman"),
+    p_value = cor.test(Methanobacteriaceae, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+```
+
+## Class merge
+#### Prokaryote classes
+
+```{r}
+#make taxonomy object by phylum
+class16S_counts_tab <- otu_table(tax_glom(pseqtest16S, taxrank="Class"), taxa_are_rows = FALSE)
+class16S_counts_tab <- t(class16S_counts_tab)
+#make vector of phyla names to set as row names
+class16S_counts_vec <- as.vector(tax_table(tax_glom(pseqtest16S, taxrank="Class"))[,3]) 
+rownames(class16S_counts_tab) <- as.vector(class16S_counts_vec)
+class16S_counts_tab
+write.csv(class16S_counts_tab, 'class16S_counts_08.28.2025.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtest16S@otu_table
+## determine the number of unclassified seqs at the class level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(class16S_counts_tab)
+## Add a row of "unclassified" to the phylum count table
+class16S_and_unidentified_counts_tab <- rbind(class16S_counts_tab, "Unclassified_Class"=unclassified_tax_counts)
+
+```
+
+```{r}
+#Check that all sequences are accounted for
+identical(colSums(class16S_and_unidentified_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+class16S_proportions_tab <- apply(class16S_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(class16S_proportions_tab, "class16S_proportions_tab_08.28.2025.csv")
+
+```
+
+```{r}
+class_merge16S <- merge(t(class16S_proportions_tab), samdf_16S,
+                  by="row.names", all=TRUE)
+rownames(class_merge16S) <- class_merge16S[,1]
+class_merge16S <- class_merge16S[,-1]
+gn<- as.numeric(nrow(class16S_proportions_tab))
+write.csv(class_merge16S, "TALSYN_classmerge16S_08.28.2025.csv")
+
+rowMeans(class16S_proportions_tab)
+
+```
+Cyanobacteriia
+```{r}
+library(rstatix)
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month)&class_merge16S$substrate=='B',] %>%
+  #group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Cyanobacteriia, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Cyanobacteriia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month)&class_merge16S$substrate=='B',] %>%
+  #group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(B_Chla, percentwet_11month, method = "spearman"),
+    p_value = cor.test(B_Chla, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+```
+
+
+Based on https://doi.org/10.1128/aem.02247-23 
+Known methanogenic classes of Archaea include Thermoplasmia (Thermoplasmata), Methanobacteriia (Methanobacteria), Methanocellia, Methanonatronarchaeia, Methanomicrobia, Metanephric, and Methanococci 
+
+```{r}
+library(rstatix)
+
+## Methanogenic Archaea classes present in our study
+# Methanobacteria; Methanomicrobia; Thermoplasmata; Methanocellia; Methanomethylicia; Methanosarcinia
+
+## non-methanogeenix archaea: Nitrososphaeria
+
+## Methanobacteria
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanobacteria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanobacteria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomicrobia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanomicrobia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanomicrobia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Thermoplasmata
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Thermoplasmata, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Thermoplasmata, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanocellia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanocellia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanocellia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomethylicia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanomethylicia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanomethylicia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanosarcinia
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, percentwet_11month, method = "spearman"),
+    p_value = 3*cor.test(Methanosarcinia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, CH4_avg, method = "spearman"),
+    p_value = 3*cor.test(Methanosarcinia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+
+###Nitrososphaeria
+cor_summary <- class_merge16S[!is.na(class_merge16S$percentwet_11month),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$CH4_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, CH4_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$N2Ar_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, N2Ar_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, N2Ar_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$N2O_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, N2O_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, N2O_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$CO2_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, CO2_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, CO2_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+cor_summary <- class_merge16S[!is.na(class_merge16S$O2_uM_avg),] %>%
+  group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, O2_uM_avg, method = "spearman"),
+    p_value = cor.test(Nitrososphaeria, O2_uM_avg, method = "spearman")$p.value
+  )
+cor_summary
+```
+
+Archaeal class in sediment only, with bonferonni correction
+```{r}
+class_merge16S_S<- class_merge16S[class_merge16S$substrate=='S',]
+
+## Methanobacteria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanobacteria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomicrobia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanomicrobia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+## Thermoplasmata
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Thermoplasmata, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanocellia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanocellia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomethylicia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanomethylicia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanosarcinia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Methanosarcinia, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+###Nitrososphaeria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, percentwet_11month, method = "spearman"),
+    p_value = 7*cor.test(Nitrososphaeria, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+##### METHANE #######################
+## Methanobacteria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanobacteria, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanobacteria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomicrobia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomicrobia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanomicrobia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Thermoplasmata
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Thermoplasmata, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Thermoplasmata, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanocellia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanocellia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanocellia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+## Methanomethylicia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanomethylicia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanomethylicia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+
+## Methanosarcinia
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Methanosarcinia, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Methanosarcinia, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+###Nitrososphaeria
+cor_summary <- class_merge16S_S[!is.na(class_merge16S_S$CH4_avg),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Nitrososphaeria, CH4_avg, method = "spearman"),
+    p_value = 7*cor.test(Nitrososphaeria, CH4_avg, method = "spearman")$p.value
+  )
+cor_summary
+
+```
+
+```{r}
+pseqtest16Sarch<- subset_taxa(pseqtest16S, Kingdom=="Archaea")
+#make taxonomy object by phylum
+class16Sarch_counts_tab <- otu_table(tax_glom(pseqtest16Sarch, taxrank="Class"), taxa_are_rows = FALSE)
+class16Sarch_counts_tab <- t(class16Sarch_counts_tab)
+#make vector of phyla names to set as row names
+class16Sarch_counts_vec <- as.vector(tax_table(tax_glom(pseqtest16Sarch, taxrank="Class"))[,3]) 
+rownames(class16Sarch_counts_tab) <- as.vector(class16Sarch_counts_vec)
+class16Sarch_counts_tab
+write.csv(class16Sarch_counts_tab, 'class16Sarch_counts_08.28.2025.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtest16Sarch@otu_table
+## determine the number of unclassified seqs at the class level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(class16Sarch_counts_tab)
+## Add a row of "unclassified" to the phylum count table
+class16Sarch_and_unidentified_counts_tab <- rbind(class16Sarch_counts_tab, "Unclassified_Class"=unclassified_tax_counts)
+
+```
+
+```{r}
+#Check that all sequences are accounted for
+identical(colSums(class16Sarch_and_unidentified_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+class16Sarch_proportions_tab <- apply(class16Sarch_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(class16Sarch_proportions_tab, "class16Sarch_proportions_tab_08.28.2025.csv")
+
+class16Sarch_proportions_tab<-class16Sarch_proportions_tab[,!is.na(colSums(class16Sarch_proportions_tab)>0)]
+#class16Sarch_proportions_tab<-class16Sarch_proportions_tab[,!is.na(colSums(class16Sarch_proportions_tab))]
+rowMeans(class16Sarch_proportions_tab)
+
+```
+
+```{r}
+samdf_16Sarch<- sam_data(pseqtest16Sarch)
+class_merge16Sarch <- merge(samdf_16Sarch, t(class16Sarch_proportions_tab),
+                  by="row.names", all=TRUE)
+rownames(class_merge16Sarch) <- class_merge16Sarch[,1]
+class_merge16Sarch <- class_merge16Sarch[,-1]
+
+write.csv(class_merge16Sarch, "TALSYN_classmerge16Sarch_08.28.2025.csv")
+```
+
+## Basidiomycetes
+taxmergeITS
+```{r}
+taxmergeITS_S<- taxmergeITS[taxmergeITS$substrate=='S',]
+
+
+mean(taxmergeITS_S[taxmergeITS_S$persistence_class=="recently_dry",'Basidiomycota'])
+sd(taxmergeITS_S[taxmergeITS_S$persistence_class=="recently_dry",'Basidiomycota'])
+
+mean(taxmergeITS_S[taxmergeITS_S$persistence_class=="relatively_wet",'Basidiomycota'])
+sd(taxmergeITS_S[taxmergeITS_S$persistence_class=="relatively_wet",'Basidiomycota'])
+
+stat.test <- taxmergeITS_S %>%
+wilcox_test(Basidiomycota~persistence_class) %>%
+  adjust_pvalue(method = "bonferroni") %>%
+  add_significance()
+stat.test
+effsize <-  taxmergeITS_S %>%
+  wilcox_effsize(Basidiomycota~persistence_class)
+effsize
+
+
+## Basidiomycota
+cor_summary <- taxmergeITS_S[!is.na(taxmergeITS_S$percentwet_11month),] %>%
+ # group_by(substrate) %>%
+  summarize(
+    spearman_rho = cor(Basidiomycota, percentwet_11month, method = "spearman"),
+    p_value = cor.test(Basidiomycota, percentwet_11month, method = "spearman")$p.value
+  )
+cor_summary
+
+
+```
+
+#######
+###
+# Dominant Class/phylum GLLVM's
+###
+#######
+
+#### Leaf Litter Species at sites with stic data
+```{r}
+library(stringr)
+
+class_merge16S_L<- class_merge16S[class_merge16S$substrate=='L',]
+class_merge16S_L<- class_merge16S_L[!is.na(class_merge16S_L$percentwet_11month),]
+classtemp_L<- class_merge16S_L[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+classtemp_L <- classtemp_L[,order(colSums(-classtemp_L,na.rm=TRUE))]
+classtemp_L <- classtemp_L[,apply(classtemp_L,2,function(x) sum(x > 0))>1]
+
+sapply(classtemp_L, sd)
+
+class_merge16S_L <- merge(classtemp_L, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(class_merge16S_L) <- class_merge16S_L[,1]
+class_merge16S_L <- class_merge16S_L[,-1]
+class_merge16S_L<- class_merge16S_L[,colnames(class_merge16S_L)!="Unclassified_class"]
+
+
+
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+L_abun<-class_merge16S_L[,1:20]
+X <- as.matrix(class_merge16S_L[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(L_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "poisson", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_LL_plot_class.pdf", 
+    )
+gllvm16S_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_L
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+median(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),]
+
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+                 
+### Now, we might have some other outliers, with 
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SClLleg<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8),
+        #axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 16),
+        legend.position = "bottom",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Correlation coefficient with 11-month water persistence:", fill="Correlation coefficient with 11-month water persistence:", title = "Prokaryotic classes in leaf litter (n=40)")
+ggllvm_16SClLleg
+
+ggllvm_16SClL<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryotic classes in leaf litter (n=40)")
+ggllvm_16SClL
+
+```
+
+
+
+#### Epilithon Species at sites with stic data
+```{r}
+library(stringr)
+class_merge16S_B<- class_merge16S[class_merge16S$substrate=='B',]
+class_merge16S_B<- class_merge16S_B[!is.na(class_merge16S_B$percentwet_11month),]
+classtemp_B<- class_merge16S_B[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+classtemp_B <- classtemp_B[,order(colSums(-classtemp_B,na.rm=TRUE))]
+classtemp_B <- classtemp_B[,apply(classtemp_B,2,function(x) sum(x > 0))>1]
+
+
+class_merge16S_B <- merge(classtemp_B, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(class_merge16S_B) <- class_merge16S_B[,1]
+class_merge16S_B <- class_merge16S_B[,-1]
+class_merge16S_B<- class_merge16S_B[,colnames(class_merge16S_B)!="Unclassified_class"]
+
+B_abun<-class_merge16S_B[,1:20]
+X <- as.matrix(class_merge16S_B[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(B_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_BB_plot_class.pdf", 
+    )
+gllvm16S_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_B
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SClB<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8, hjust=0.1),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+         axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryotic classes in epilithon (n=35)")
+ggllvm_16SClB
+#56B4E9
+```
+
+
+
+#### Sediment Species at sites with stic data
+```{r}
+library(stringr)
+class_merge16S_S<- class_merge16S[class_merge16S$substrate=='S',]
+class_merge16S_S<- class_merge16S_S[!is.na(class_merge16S_S$percentwet_11month),]
+classtemp_S<- class_merge16S_S[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+classtemp_S <- classtemp_S[,order(colSums(-classtemp_S,na.rm=TRUE))]
+classtemp_S <- classtemp_S[,apply(classtemp_S,2,function(x) sum(x > 0))>1]
+
+
+class_merge16S_S <- merge(classtemp_S, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(class_merge16S_S) <- class_merge16S_S[,1]
+class_merge16S_S <- class_merge16S_S[,-1]
+class_merge16S_S<- class_merge16S_S[,colnames(class_merge16S_S)!="Unclassified_class"]
+
+S_abun<-class_merge16S_S[,1:20]
+X <- as.matrix(class_merge16S_S[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(S_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_SS_plot.pdf", 
+    )
+gllvm16S_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_S
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SClS<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8, hjust=0.1),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+          axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryotic classes in sediment (n=40)")
+ggllvm_16SClS
+
+```
+
+#### Fungal phyla and classes
+
+```{r}
+#make taxonomy object by phylum
+classITS_counts_tab <- otu_table(tax_glom(pseqtestITS, taxrank="Class"), taxa_are_rows = FALSE)
+classITS_counts_tab <- t(classITS_counts_tab)
+#make vector of phyla names to set as row names
+classITS_counts_vec <- as.vector(tax_table(tax_glom(pseqtestITS, taxrank="Class"))[,3]) 
+rownames(classITS_counts_tab) <- as.vector(classITS_counts_vec)
+classITS_counts_tab
+write.csv(classITS_counts_tab, 'classITS_counts_08.28.2025.csv')
+          
+```
+
+```{r}
+asv_counts <- pseqtestITS@otu_table
+## determine the number of unclassified seqs at the class level
+unclassified_tax_counts <- colSums(t(asv_counts)) - colSums(classITS_counts_tab)
+## Add a row of "unclassified" to the phylum count table
+classITS_and_unidentified_counts_tab <- rbind(classITS_counts_tab, "Unclassified_Class"=unclassified_tax_counts)
+
+```
+
+```{r}
+#Check that all sequences are accounted for
+identical(colSums(classITS_and_unidentified_counts_tab), rowSums(asv_counts))
+## [1] TRUE
+#Convert totals to relative abundance
+classITS_proportions_tab <- apply(classITS_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+write.csv(classITS_proportions_tab, "classITS_proportions_tab_08.28.2025.csv")
+
+```
+
+```{r}
+class_mergeITS <- merge(t(classITS_proportions_tab), samdf_ITS,
+                  by="row.names", all=TRUE)
+rownames(class_mergeITS) <- class_mergeITS[,1]
+class_mergeITS <- class_mergeITS[,-1]
+gn<- as.numeric(nrow(classITS_proportions_tab))
+write.csv(class_mergeITS, "TALSYN_classmergeITS_08.28.2025.csv")
+
+rowMeans(classITS_proportions_tab)
+
+```
+
+
+#### Leaf Litter Species at sites with stic data
+```{r}
+library(stringr)
+
+class_mergeITS_L<- class_mergeITS[class_mergeITS$substrate=='L',]
+class_mergeITS_L<- class_mergeITS_L[!is.na(class_mergeITS_L$percentwet_11month),]
+classtemp_L<- class_mergeITS_L[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+classtemp_L <- classtemp_L[,order(colSums(-classtemp_L,na.rm=TRUE))]
+classtemp_L <- classtemp_L[,apply(classtemp_L,2,function(x) sum(x > 0))>1]
+
+sapply(classtemp_L, sd)
+
+class_mergeITS_L <- merge(classtemp_L, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(class_mergeITS_L) <- class_mergeITS_L[,1]
+class_mergeITS_L <- class_mergeITS_L[,-1]
+class_mergeITS_L<- class_mergeITS_L[,colnames(class_mergeITS_L)!="Unclassified_class"]
+
+
+
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+L_abun<-class_mergeITS_L[,1:20]
+X <- as.matrix(class_mergeITS_L[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(L_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "poisson", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_LL_plot_class.pdf", 
+    )
+gllvmITS_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_L
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+median(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),]
+
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+                 
+### Now, we might have some other outliers, with 
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+ggllvm_ITSClLleg<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8),
+        #axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+          axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        legend.position = "bottom",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Correlation coefficient with 11-month water persistence:", fill="Correlation coefficient with 11-month water persistence:", title = "Fungal classes in leaf litter (n=40)")
+ggllvm_ITSClLleg
+
+ggllvm_ITSClL<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+          axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungal classes in leaf litter (n=40)")
+ggllvm_ITSClL
+
+```
+
+
+
+#### Epilithon Species at sites with stic data
+```{r}
+library(stringr)
+class_mergeITS_B<- class_mergeITS[class_mergeITS$substrate=='B',]
+class_mergeITS_B<- class_mergeITS_B[!is.na(class_mergeITS_B$percentwet_11month),]
+classtemp_B<- class_mergeITS_B[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+classtemp_B <- classtemp_B[,order(colSums(-classtemp_B,na.rm=TRUE))]
+classtemp_B <- classtemp_B[,apply(classtemp_B,2,function(x) sum(x > 0))>1]
+
+
+class_mergeITS_B <- merge(classtemp_B, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(class_mergeITS_B) <- class_mergeITS_B[,1]
+class_mergeITS_B <- class_mergeITS_B[,-1]
+class_mergeITS_B<- class_mergeITS_B[,colnames(class_mergeITS_B)!="Unclassified_class"]
+
+B_abun<-class_mergeITS_B[,1:20]
+X <- as.matrix(class_mergeITS_B[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(B_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_BB_plot_class.pdf", 
+    )
+gllvmITS_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_B
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+
+ggllvm_ITSClB<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+          axis.title.x = element_text(size = 12, hjust=1),
+        axis.title.y = element_blank(),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungal classes is epilithon (n=26)")
+ggllvm_ITSClB
+#56B4E9
+```
+
+
+
+#### Sediment Species at sites with stic data
+```{r}
+library(stringr)
+class_mergeITS_S<- class_mergeITS[class_mergeITS$substrate=='S',]
+class_mergeITS_S<- class_mergeITS_S[!is.na(class_mergeITS_S$percentwet_11month),]
+classtemp_S<- class_mergeITS_S[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+classtemp_S <- classtemp_S[,order(colSums(-classtemp_S,na.rm=TRUE))]
+classtemp_S <- classtemp_S[,apply(classtemp_S,2,function(x) sum(x > 0))>1]
+
+
+class_mergeITS_S <- merge(classtemp_S, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(class_mergeITS_S) <- class_mergeITS_S[,1]
+class_mergeITS_S <- class_mergeITS_S[,-1]
+class_mergeITS_S<- class_mergeITS_S[,colnames(class_mergeITS_S)!="Unclassified_class"]
+
+S_abun<-class_mergeITS_S[,1:20]
+X <- as.matrix(class_mergeITS_S[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(S_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_SS_plot.pdf", 
+    )
+gllvmITS_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_S
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+ggllvm_ITSClS<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 1),
+        axis.text.x = element_text(size = 8, hjust=1),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+          axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungal classes in sediment (n=32)")
+ggllvm_ITSClS
+
+```
+
+```{r}
+library(cowplot)
+
+six_gllvm<- plot_grid(ggllvm_16SClL, ggllvm_16SClB, ggllvm_16SClS, ggllvm_ITSClL, ggllvm_ITSClB, ggllvm_ITSClS, ncol=3, align="hv", labels="AUTO")#, labels=c, rel_widths = c(1, 1.618))
+six_gllvm
+
+#leg <- get_legend(ggllvm_16SClLleg)
+leg <- cowplot::get_plot_component(ggllvm_16SClLleg, 'guide-box-bottom', return_all = TRUE)
+cowplot::ggdraw(leg)
+
+plotout <- "CLASS_gllvm_01.23.2026.tiff"
+agg_tiff(filename=plotout, width=4800, height=3800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(six_gllvm, leg, ncol=1, rel_heights = c(1,0.05))
+invisible(dev.off())
+
+```
+
+---
+title: "Analysis_0.4_Gen.spp.GLLVMs"
+author: "Charles T. Bond"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Microbial Community Analysis: Talladega Forest Non-perennial Stream Network
+
+## Analysis_0.4: Microbial taxa across the stream network
+
+### Introduction
+Following the analysis and visualization of major phyla and class of microbess in Analysis 0.3, we will now look into the taxonomic groups of prokaryotes and fungi occuring in the stream. See the next analysis (0.5) for generalized linear latent variable models for top genera, species, or PICRUSt2-based functional trait assignment.
+
+
+## Load phyloseq objects
+```{r}
+#prokaryotes
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtest16S.rdata")
+pseqtest16S
+
+#fungi
+load("/Users/chunk/Talladega_synoptic/Analysis/Rdata/pseqtestITS.rdata")
+pseqtestITS
+
+## Cutting the single beaver pond site, its an outlier, the only permanent lentic site
+pseqtest16S <- subset_samples(pseqtest16S, siteId != "TLMBP")
+pseqtestITS <- subset_samples(pseqtestITS, siteId != "TLMBP")
+
+# extract sampe data
+samdf_16S <- data.frame(sample_data(pseqtest16S))
+samdf_ITS <- data.frame(sample_data(pseqtestITS))
+```
+
+
+
+# Top prokaryotic ASVs/spp
+
+In the past I've lumped taxa to the gens level for corrplots, but I see some aquatic hyphomycete genus standing out that I'd like to keep at the genus level. So, I will make a new object combining
+```{r}
+pseqtest16S_gen <- pseqtest16S
+### If Species == NA, rename 'gen.'. We will merge these, so potentially multiple genus may be merged together.
+#na.sp = !is.na(tax_table(pseqtest16S_gen)[,"Genus"]) & is.na(tax_table(pseqtest16S_gen)[,"Species"])
+#tax_table(pseqtest16S_gen)[na.sp][,"Species"] <- "sp. unk."
+#na.gn  = is.na(tax_table(pseqtest16S_gen)[,"Genus"])#
+#tax_table(pseqtest16S_gen)[na.gn][,"Species"] <- ""
+### good
+
+### Now, make "Species" "Genus genus"
+## Genus and Species is not NA
+#no.na <- !is.na(tax_table(pseqtest16S_gen)[,"Genus"]) & !is.na(tax_table(pseqtest16S_gen)[,"Species"])
+## Replace Species with full name
+#tax_table(pseqtest16S_gen)[no.na][,"Species"] <- paste(tax_table(pseqtest16S_gen)[no.na][,"Genus"], tax_table(pseqtest16S_gen)[no.na][,"Species"])
+
+## We could also include unidentified families or higher levels
+### family
+#lo.fam<- !is.na(tax_table(pseqtest16S_gen)[,"Family"]) & is.na(tax_table(pseqtest16S_gen)[,"Genus"])
+#tax_table(pseqtest16S_gen)[lo.fam][,"Species"] <- paste("unidentified", tax_table(pseqtest16S_gen)[lo.fam][,"Family"])
+
+```
+
+Now we will agglomerate ('lump') taxa to the lowest rank possible.
+```{r}
+### genus agglomeration
+## make taxonomy object by genus
+gen_counts_tab <- otu_table(tax_glom(pseqtest16S_gen, taxrank = "Genus"), taxa_are_rows = FALSE)
+gen_counts_tab <- t(gen_counts_tab)
+## make vector of genus names to set as row names
+gen_tax_vec <- as.vector(tax_table(tax_glom(pseqtest16S_gen, taxrank="Genus"))[,6]) 
+rownames(gen_counts_tab) <- as.vector(gen_tax_vec)
+
+asv_counts <- pseqtest16S_gen@otu_table
+#determine the number of unclassified seqs at the genus level
+unclassified_gen_counts <- colSums(t(asv_counts)) - colSums(gen_counts_tab)
+#Add a row of "unclassified" to the genus count table
+genus_and_unidentified_counts_tab <- rbind(gen_counts_tab, "Unclassified_genus"=unclassified_gen_counts)
+
+## test all counts are accounted for
+identical(colSums(genus_and_unidentified_counts_tab), rowSums(asv_counts))
+
+## convert counts to percent abundance:
+genus_proportions <- apply(genus_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+
+#Merge with metadata
+genus_merge <- merge(t(genus_proportions), samdf_16S,
+                  by="row.names", all=TRUE)
+rownames(genus_merge) <- genus_merge[,1]
+genus_merge <- genus_merge[,-1]
+gn<- as.numeric(nrow(genus_proportions))
+```
+
+#### Leaf Litter Species at sites with stic data
+```{r}
+library(stringr)
+genmerge_L<- genus_merge[genus_merge$substrate=='L',]
+genmerge_L<- genmerge_L[!is.na(genmerge_L$percentwet_11month),]
+gentemp_L<- genmerge_L[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+gentemp_L <- gentemp_L[,order(colSums(-gentemp_L,na.rm=TRUE))]
+gentemp_L <- gentemp_L[,apply(gentemp_L,2,function(x) sum(x > 0))>1]
+
+sapply(gentemp_L, sd)
+
+genmerge_L <- merge(gentemp_L, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(genmerge_L) <- genmerge_L[,1]
+genmerge_L <- genmerge_L[,-1]
+genmerge_L<- genmerge_L[,colnames(genmerge_L)!="Unclassified_genus"]
+
+
+
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+L_abun<-genmerge_L[,1:40]
+X <- as.matrix(genmerge_L[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(L_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_LL_plot.pdf", 
+    )
+gllvm16S_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_L
+dev.off()
+```
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+median(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),]
+
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+                 
+### Now, we might have some other outliers, with 
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SgnLleg<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        #axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        legend.position = "bottom",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Correlation coefficient with 11-month water persistence:", fill="Correlation coefficient with 11-month water persistence:", title = "Prokaryote genera in leaf litter (n=40)")
+ggllvm_16SgnLleg
+
+ggllvm_16SgnL<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryote genera in leaf litter (n=40)")
+ggllvm_16SgnL
+
+```
+
+
+
+#### Epilithon Species at sites with stic data
+```{r}
+library(stringr)
+genmerge_B<- genus_merge[genus_merge$substrate=='B',]
+genmerge_B<- genmerge_B[!is.na(genmerge_B$percentwet_11month),]
+gentemp_B<- genmerge_B[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+gentemp_B <- gentemp_B[,order(colSums(-gentemp_B,na.rm=TRUE))]
+gentemp_B <- gentemp_B[,apply(gentemp_B,2,function(x) sum(x > 0))>1]
+
+
+genmerge_B <- merge(gentemp_B, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(genmerge_B) <- genmerge_B[,1]
+genmerge_B <- genmerge_B[,-1]
+genmerge_B<- genmerge_B[,colnames(genmerge_B)!="Unclassified_genus"]
+
+B_abun<-genmerge_B[,1:40]
+X <- as.matrix(genmerge_B[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(B_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_BB_plot.pdf", 
+    )
+gllvm16S_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_B
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SgnB<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryote genera in epilithon (n=35)")
+ggllvm_16SgnB
+#56B4E9
+```
+
+
+
+#### Sediment Species at sites with stic data
+```{r}
+library(stringr)
+genmerge_S<- genus_merge[genus_merge$substrate=='S',]
+genmerge_S<- genmerge_S[!is.na(genmerge_S$percentwet_11month),]
+gentemp_S<- genmerge_S[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+gentemp_S <- gentemp_S[,order(colSums(-gentemp_S,na.rm=TRUE))]
+gentemp_S <- gentemp_S[,apply(gentemp_S,2,function(x) sum(x > 0))>1]
+
+
+genmerge_S <- merge(gentemp_S, samdf_16S,
+                  by="row.names", all=FALSE)
+rownames(genmerge_S) <- genmerge_S[,1]
+genmerge_S <- genmerge_S[,-1]
+genmerge_S<- genmerge_S[,colnames(genmerge_S)!="Unclassified_genus"]
+
+S_abun<-genmerge_S[,1:40]
+X <- as.matrix(genmerge_S[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(S_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.gen=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_16S_SS_plot.pdf", 
+    )
+gllvm16S_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvm16S_S
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_16SgnS<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Prokaryote genera in sediment (n=40)")
+ggllvm_16SgnS
+
+```
+
+
+###############################################
+# Top Fungal ASVs/spp
+
+In the past I've lumped taxa to the gens level for corrplots, but I see some aquatic hyphomycete species standing out that I'd like to keep at the species level. So, I will make a new object combining
+```{r}
+pseqtestITS_spp <- pseqtestITS
+### If Species == NA, rename 'spp.'. We will merge these, so potentially multiple species may be merged together.
+na.sp = !is.na(tax_table(pseqtestITS_spp)[,"Genus"]) & is.na(tax_table(pseqtestITS_spp)[,"Species"])
+tax_table(pseqtestITS_spp)[na.sp][,"Species"] <- "spp. unid."
+na.gn  = is.na(tax_table(pseqtestITS_spp)[,"Genus"])
+tax_table(pseqtestITS_spp)[na.gn][,"Species"] <- ""
+### good
+
+### Now, make "Species" "Genus species"
+## Genus and Species is not NA
+no.na <- !is.na(tax_table(pseqtestITS_spp)[,"Genus"]) & !is.na(tax_table(pseqtestITS_spp)[,"Species"])
+## Replace Species with full name
+tax_table(pseqtestITS_spp)[no.na][,"Species"] <- paste(tax_table(pseqtestITS_spp)[no.na][,"Genus"], tax_table(pseqtestITS_spp)[no.na][,"Species"])
+
+## We could also include unidentified families or higher levels
+### family
+#lo.fam<- !is.na(tax_table(pseqtestITS_spp)[,"Family"]) & is.na(tax_table(pseqtestITS_spp)[,"Genus"])
+#tax_table(pseqtestITS_spp)[lo.fam][,"Species"] <- paste("unidentified", tax_table(pseqtestITS_spp)[lo.fam][,"Family"])
+
+```
+
+Now we will agglomerate ('lump') taxa to the lowest rank possible.
+```{r}
+### species agglomeration
+## make taxonomy object by species
+spp_counts_tab <- otu_table(tax_glom(pseqtestITS_spp, taxrank = "Species"), taxa_are_rows = FALSE)
+spp_counts_tab <- t(spp_counts_tab)
+## make vector of species names to set as row names
+spp_tax_vec <- as.vector(tax_table(tax_glom(pseqtestITS_spp, taxrank="Species"))[,7]) 
+rownames(spp_counts_tab) <- as.vector(spp_tax_vec)
+
+asv_counts <- pseqtestITS_spp@otu_table
+#determine the number of unclassified seqs at the species level
+unclassified_spp_counts <- colSums(t(asv_counts)) - colSums(spp_counts_tab)
+#Add a row of "unclassified" to the species count table
+species_and_unidentified_counts_tab <- rbind(spp_counts_tab, "Unclassified_species"=unclassified_spp_counts)
+
+## test all counts are accounted for
+identical(colSums(species_and_unidentified_counts_tab), rowSums(asv_counts))
+
+## convert counts to percent abundance:
+species_proportions <- apply(species_and_unidentified_counts_tab, 2, function(x) x/sum(x)*100)
+
+species_proportions<- species_proportions[!grepl("Incertae",rownames(species_proportions)),]
+
+#Merge with metadata
+species_merge <- merge(t(species_proportions), samdf_ITS,
+                  by="row.names", all=TRUE)
+rownames(species_merge) <- species_merge[,1]
+species_merge <- species_merge[,-1]
+
+## remove genera Incertae sedis
+#species_merge<- species_merge[,!grepl("Incertae",colnames(species_merge))]
+
+gn<- as.numeric(nrow(species_proportions))
+```
+
+#### Leaf Litter Species at sites with stic data
+```{r}
+library(stringr)
+sppmerge_L<- species_merge[species_merge$substrate=='L',]
+sppmerge_L<- sppmerge_L[!is.na(sppmerge_L$percentwet_11month),]
+spptemp_L<- sppmerge_L[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+spptemp_L <- spptemp_L[,order(colSums(-spptemp_L,na.rm=TRUE))]
+spptemp_L <- spptemp_L[,apply(spptemp_L,2,function(x) sum(x > 0))>1]
+
+
+sppmerge_L <- merge(spptemp_L, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(sppmerge_L) <- sppmerge_L[,1]
+sppmerge_L <- sppmerge_L[,-1]
+sppmerge_L<- sppmerge_L[,colnames(sppmerge_L)!="Unclassified_species"]
+```
+
+gglvm of top leaf taxa
+```{r}
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+L_abun<-sppmerge_L[,1:40]
+X <- as.matrix(sppmerge_L[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(L_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_LL_plot.pdf", 
+    )
+gllvmITS_L<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_L
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+#rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+#coefP[coefP$taxID=="Tremellodendropsidales_gen_Incertae_sedis spp. unid.","taxID"] <- "Tremellodendropsidales gen. In. sed"
+
+ggllvm_ITSspL<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungal spp. in leaf litter (n=40)")
+ggllvm_ITSspL
+#56B4E9
+```
+
+#### Epilithon Species at sites with stic data
+```{r}
+library(stringr)
+sppmerge_B<- species_merge[species_merge$substrate=='B',]
+sppmerge_B<- sppmerge_B[!is.na(sppmerge_B$percentwet_11month),]
+spptemp_B<- sppmerge_B[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+spptemp_B <- spptemp_B[,order(colSums(-spptemp_B,na.rm=TRUE))]
+spptemp_B <- spptemp_B[,apply(spptemp_B,2,function(x) sum(x > 0))>1]
+
+
+sppmerge_B <- merge(spptemp_B, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(sppmerge_B) <- sppmerge_B[,1]
+sppmerge_B <- sppmerge_B[,-1]
+sppmerge_B<- sppmerge_B[,colnames(sppmerge_B)!="Unclassified_species"]
+```
+
+gglvm of top leaf taxa
+```{r}
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+B_abun<-sppmerge_B[,1:40]
+colSums(B_abun)
+
+X <- as.matrix(sppmerge_B[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(B_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_BB_plot.pdf", 
+    )
+gllvmITS_B<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_B
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),] 
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+#rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+#coefP[coefP$taxID=="Pleosporaceae_gen_Incertae_sedis spp. unid.","taxID"] <- "Pleosporaceae gen. In. sed."
+#coefP[coefP$taxID=="Pannariaceae_gen_Incertae_sedis spp. unid.","taxID"] <- "Pannariaceae gen. In. sed."
+#coefP[coefP$taxID=="Capnodiales_gen_Incertae_sedis spp. unid.","taxID"] <- "Capnodiales gen. In. sed."
+#coefP[coefP$taxID=="Pleosporaceae_gen_Incertae_sedis spp. unid.","taxID"] <- "Pleosporaceae gen. In. sed."
+
+ggllvm_ITSspB<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        strip.text = element_text(size = 8, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=40,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungal spp. in epilithon (n=26)")
+ggllvm_ITSspB
+#56B4E9
+```
+
+
+#### Sediment Species at sites with stic data
+```{r}
+library(stringr)
+sppmerge_S<- species_merge[species_merge$substrate=='S',]
+sppmerge_S<- sppmerge_S[!is.na(sppmerge_S$percentwet_11month),]
+spptemp_S<- sppmerge_S[,1:gn]
+
+#Reorder data table from most abundant to least abundant
+spptemp_S <- spptemp_S[,order(colSums(-spptemp_S,na.rm=TRUE))]
+spptemp_S <- spptemp_S[,apply(spptemp_S,2,function(x) sum(x > 0))>1]
+
+
+sppmerge_S <- merge(spptemp_S, samdf_ITS,
+                  by="row.names", all=FALSE)
+rownames(sppmerge_S) <- sppmerge_S[,1]
+sppmerge_S <- sppmerge_S[,-1]
+sppmerge_S<- sppmerge_S[,colnames(sppmerge_S)!="Unclassified_species"]
+```
+
+```{r}
+library(mvabund)
+library(gllvm)
+library(tidyverse)
+
+#detach("package:linkET", unload=TRUE)
+S_abun<-sppmerge_S[,1:40]
+colSums(S_abun)
+
+X <- as.matrix(sppmerge_S[,c("percentwet_11month","LL_AFDM_prc")])
+y<-as.matrix(as.tibble(S_abun))
+
+gllvm(y, family = "poisson")
+gllvm(y, family = "negative.binomial")
+fit_ord<- gllvm(y, family = "negative.binomial")
+ordiplot(fit_ord, biplot=TRUE, ind.spp=14)
+
+#gllvm(y, X, family = "negative.binomial")
+#gllvm(y, family = "negative.binomial")
+#gllvm(formula = y~X$prc_wet, family = "negative.binomial")
+
+fit_env <- gllvm(y, X, family = "negative.binomial", num.lv = 1,
+                 formula = ~ percentwet_11month, seed = 2025)
+coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+
+pdf("GLLVM_ITS_SS_plot.pdf", 
+    )
+gllvmITS_S<- coefplot(fit_env, cex.ylab = 0.7, mar = c(4, 15, 2, 1), mfrow=c(1,1))
+gllvmITS_S
+dev.off()
+```
+
+```{r}
+
+coefP<- as.data.frame(fit_env$params$Xcoef) ## extract coefficients from gllvm
+confP<- as.data.frame(confint(fit_env, parm = "Xcoef")) ##extract confidence intervals of coefficients from gllvm
+row.names(confP)<- row.names(coefP) ## keeping consistent row names and order between coefficient and confidence interval objects
+coefP<- merge(coefP, confP[,1:2], by="row.names", all = TRUE) ## merging coefficient and confidence interval objects
+row.names(coefP)<- coefP[,1] ## converts the actual row names of the new merged object to the unfortunate "Row.names" column created after merging
+coefP<- coefP[,-1] ## remove the unfortunate "Row.names" column from the object
+coefP<- coefP %>% 
+  mutate(taxID = row.names(coefP))   ## create a column with the species ID from the row names
+coefP<- coefP %>%             ## create a color key for the confidence intervals
+  mutate(error_bar_color = case_when(
+    cilow > 0 ~ "Positive",
+    ciup < 0 ~ "Negative",
+    TRUE ~ "Neutral"
+  ))
+
+### checking for outliers
+coefP$ciup-coefP$cilow
+mean(coefP$percentwet_11month)
+sd(coefP$percentwet_11month)
+mean(coefP$ciup-coefP$cilow)
+sd(coefP$ciup-coefP$cilow)
+
+### If a taxon's confidence interval is off the charts (wider than than the distribution of all other taxa), we want to remove it, as it is both extremely low confidence and ruins the viualization
+#coefP<- coefP[!(coefP$cilow==min(coefP$cilow)&coefP$ciup==max(coefP$ciup)),] 
+coefP<- coefP[coefP$ciup-coefP$cilow<10*median(coefP$ciup-coefP$cilow),]
+coefP<- coefP[coefP$ciup<10*median(coefP$ciup),]
+
+coefP<- arrange(coefP, desc(percentwet_11month)) ## arrange the coefficient object in descending order of the coefficient
+
+## Now, the Burkholderia-Caballeronia-Paraburkholderia should be abbreviated as "BCP_group" for space
+#rownames(coefP)[rownames(coefP)=="Burkholderia-Caballeronia-Paraburkholderia"]<-"BCP_group"
+#coefP[coefP$taxID=="Burkholderia-Caballeronia-Paraburkholderia","taxID"] <- "BCP_group"
+
+ggllvm_ITSspS<- ggplot(coefP, aes(x = percentwet_11month, y = reorder(taxID,percentwet_11month), fill = error_bar_color))+ 
+  geom_point(shape=21, size=3.5)+
+  geom_vline(xintercept = 0, lty = 2)+
+  geom_errorbarh(aes(xmin = cilow, xmax = ciup, color = error_bar_color), size=0.8)+
+  scale_color_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+  scale_fill_manual(values = c("Positive" = "blue", "Negative" = "#E69F00", "Neutral" = "grey50"))+
+    theme(axis.text.y.left = element_text(size = 10, color = "black"),
+        axis.text.x.bottom = element_text(size = 8),
+        #axis.text.x.top = element_text(angle=35,vjust=1, hjust=1),
+        plot.title=element_text(size=16, face = "bold", hjust = 0.8),
+        axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12, hjust=1),
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7),
+        legend.position = "none",
+        plot.margin = unit(c(1.5, 0.3, 0, 0.3), "lines"))+
+  labs(x="11-month percent wet covariate coefficient", color="Effect:", fill="Effect:", title = "Fungal spp. in sediment (n=32)")
+ggllvm_ITSspS
+#56B4E9
+```
+
+```{r}
+library(cowplot)
+
+six_gllvm<- plot_grid(ggllvm_16SgnL, ggllvm_16SgnB, ggllvm_16SgnS, ggllvm_ITSspL, ggllvm_ITSspB, ggllvm_ITSspS, ncol=3, align="hv", labels="AUTO")#, labels=c, rel_widths = c(1, 1.618))
+six_gllvm
+
+#leg <- get_legend(ggllvm_16SgnLleg)
+#leg
+leg <- cowplot::get_plot_component(ggllvm_16SgnLleg, 'guide-box-bottom', return_all = TRUE)
+cowplot::ggdraw(leg)
+
+plotout <- "six_gllvm_08.28.2025.tiff"
+agg_tiff(filename=plotout, width=4800, height=3800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(six_gllvm, leg, ncol=1, rel_heights = c(1,0.05))
+invisible(dev.off())
+
+```
+
+Plot prokaryote and fungi separately gllvms
+```{r}
+library(cowplot)
+
+### prokaryotes
+six_gllvm<- plot_grid(ggllvm_16SClL, ggllvm_16SClB, ggllvm_16SClS,ggllvm_16SgnL, ggllvm_16SgnB, ggllvm_16SgnS,ncol=3, align="hv", labels="AUTO", rel_heights = c(1,1.618))#, labels=c, rel_widths = c(1, 1.618))
+six_gllvm
+###
+
+plotout <- "Figure_4_prokaryote_gllvm_01.23.2026.tiff"
+agg_tiff(filename=plotout, width=4800, height=3800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(six_gllvm, leg, ncol=1, rel_heights = c(1,0.05))
+invisible(dev.off())
+
+
+### fungi
+six_gllvm<- plot_grid(ggllvm_ITSClL, ggllvm_ITSClB, ggllvm_ITSClS,ggllvm_ITSspL, ggllvm_ITSspB, ggllvm_ITSspS, ncol=3, align="hv", labels="AUTO",rel_heights = c(1,1.618))#, labels=c, rel_widths = c(1, 1.618))
+six_gllvm 
+
+#leg <- get_legend(ggllvm_16SClLleg)
+leg <- cowplot::get_plot_component(ggllvm_16SClLleg, 'guide-box-bottom', return_all = TRUE)
+cowplot::ggdraw(leg)
+plotout <- "Figure_5_fungi_gllvm_01.23.2026.tiff"
+agg_tiff(filename=plotout, width=4800, height=3800, units="px",
+         pointsize=10, res=600, compression="lzw", scaling=0.5)
+plot_grid(six_gllvm, leg, ncol=1, rel_heights = c(1,0.05))
+invisible(dev.off())
+
+```
+
+
+
+
+
