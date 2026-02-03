@@ -19,9 +19,7 @@ This project is composed of three main components:
    - Analyses divided into multiple sections (With corresponding Rmarkdown files):
      - 0.1: Overview and rarefaction (summarizing ASV count data and rarefying for downstream analyses).
      - 0.2: Community Composition Analysis (alpha and beta diversity tests, NMDS, Mantel, etc).
-     - 0.3: Kingdoms, Phyla, and Classes across stream continuum.
-     - 0.4: Genera and species across stream continuum.
-     - 0.5: Predicted genes (PICRUSt2) across stream continuum.
+     - 0.3: Kingdoms, Phyla, and Classes, Genera and species across stream continuum.
   
 This repository is a work in progress and may not yet contain all code or data.
 
@@ -55,8 +53,7 @@ Analysis:
 - 0.1: Overview and rarefaction (summarizing ASV count data and rarefying for downstream analyses).
 - 0.2: Community Composition Analysis (alpha and beta diversity tests, NMDS, Mantel, etc).
 - 0.3: Kingdoms, Phyla, and Classes across stream continuum.
-- 0.4: Genera and species across stream continuum.
-- 0.5: Predicted genes (PICRUSt2) across stream continuum.
+- Bonus analysis (not included in paper) examining predicted gene relative abundance (PICRUSt2) across the stream continuum.
 
 ### Analysis 0.1 and 0.2
 Leaf litter, rock surfaces, and sediments differed in both prokaryotic and fungal community composition. 
@@ -69,11 +66,10 @@ Dominant prokaryotic and fungal phyla or classes across the dry, recently dry, a
 Figure 3. Bars show average percent abundances in each microhabitat, separated into dry ephemeral sites, wet ephemeral sites, and wet intermittent sites.
    (A) the top prokaryotic phyla, or classes of Pseudomonadota (formerly Proteobacteria).
    (B) the top fungal phyla or classes of Ascomycota. 
-
-### Analysis 0.4
-Generalized linear latent variable models testing for correlations between 11-month water persistence and relative abundance of the dominant prokaryotic and fungal genera or species in each microhabitat. 
+   
+Generalized linear latent variable models test for correlations between 11-month water persistence and relative abundance of the dominant prokaryotic and fungal genera or species in each microhabitat. 
 ![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/figure-4_orig.jpg)
 
-### Analysis 0.5
+### Bonus
 Trends in PICRUSt2-based MetaCyc pathways or KO relative abundances. (A-C) Generalized linear latent variable models testing for correlations between 11-month water persistence and relative abundance of the MetaCyc pathways prokaryotic and fungal genera or species in each microhabitat. 
 ![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/figure-5-09-03-2025_orig.jpg)
