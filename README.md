@@ -26,6 +26,8 @@ This repository is a work in progress and may not yet contain all code or data.
 ## Introduction
 Our non-perennial stream network is located in a 0.92 hectare watershed in the Talladeda National Foest, Alabama, in the Piedmont region. 
 STIC sensors deployed across most sites allowed us to estimate the percent of time surface water was present over an 11-month period.
+![Figure_1_TAL_map_corrplots_08 28 2025 Large](https://github.com/user-attachments/assets/f207e271-5475-42ce-bf32-858ffb41473e)
+
 ![alt text](https://ctbond.weebly.com/uploads/1/5/2/6/152638843/figure1_orig.jpg)
 
 Figure 1) Study watershed and stream network, with STIC sensor-equipped sites colored by the percent of time they were wet over an 11-month period, and non-sensor-equipped sites colored in grey. Sites were also classified as ephemeral or intermittent based on flow permanence, and one beaver pond site was permanent. Some ephemeral sites were dry at the time of sampling, shown on the map as hollow circles. 
