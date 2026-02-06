@@ -68,24 +68,33 @@ meta_tab <- meta_tab[meta_tab$siteId!="TLMBP",]
 
 ```{r}
 library(viridis)
+data_subset <- meta_tab[meta_tab$percentwet_11month %in% NA, ]
+
 TALmap <- ggplot() +
   geom_sf(data = talws_ll) +
   geom_sf(data = talmap_ll) +
   coord_sf(ylim=c(33.7576, 33.7715), xlim = c(-85.60915, -85.5952))+
   # coord_sf(ylim=c(39.071, 39.093), xlim = c(-96.595, -96.565))+
   geom_point(data=meta_tab, aes(x=long, y=lat, fill=percentwet_11month, shape=WetDry), size=3.3)+
-   scale_fill_viridis(option="viridis", discrete = FALSE, begin = 1, end = 0.2, labels = scales::percent_format())+
-#  scale_colour_gradientn(colors = rev(pal), labels = scales::percent_format(), limits = common_limits)+
+   scale_fill_viridis(option="viridis", discrete = FALSE, begin = 1, end = 0.32, labels = scales::percent_format())+
   scale_shape_manual(values = c(23,21))+
-  labs(legend="right", shape="Wet/Dry:", fill="11-month water persistence:", x="Longitude", y="Latitude"
+  geom_point(data=data_subset, aes(x=long, y=lat, color="No STIC data"),
+             fill='black', size=3.3, shape=21) +
+  scale_color_manual(name="", values=c("No STIC data" = "black"), 
+                     guide = guide_legend(override.aes = list(fill = "black"))) +
+  labs(shape="Wet/Dry:", fill="11-month water 
+       persistence:
+       ", x="Longitude", y="Latitude"
   )+ 
- theme(axis.text.x = element_text(size = 8, angle=30, vjust=1, hjust=1), axis.text.y = element_text(size = 8), legend.title=element_text(size=10), 
-        legend.text=element_text(size=10))
+ theme(axis.text.x = element_text(size = 9, angle=30, vjust=1, hjust=1), axis.text.y = element_text(size = 9), legend.title=element_text(size=12),
+       legend.position = 'right',
+        legend.text=element_text(size=12))
+
 TALmap
 
 library(ragg)
-plotout <- "TAL_map_08282025.tiff"
-agg_tiff(filename=plotout, width=2500, height=2000, units="px",
+plotout <- "TAL_map_01252026.tiff"
+agg_tiff(filename=plotout, width=2400, height=2000, units="px",
          pointsize=10, res=600, compression="lzw", scaling=0.5)
 TALmap
 invisible(dev.off())
@@ -225,11 +234,11 @@ bc<-plot_grid(metacorrplot11, metacorrplotgas11, labels=c('B','C'), rel_widths =
 
 
 plotout <- "TAL_map_corrplots_08.28.2025.tiff"
-agg_tiff(filename=plotout, width=4600, height=5000, units="px",
+agg_tiff(filename=plotout, width=4600, height=5700, units="px",
          pointsize=10, res=600, compression="lzw", scaling=1)
 plot_grid(TALmap, bc, labels=c('A',''), ncol=1, rel_heights =c(1,0.7))
 invisible(dev.off())
-plot_grid(TALmap, bc, labels=c('A',''), ncol=1, rel_heights =c(1,0.7))
+plot_grid(TALmap, bc, labels=c('A',''), ncol=1, rel_heights =c(1,0.8))
 ```
 
 ```{r}
