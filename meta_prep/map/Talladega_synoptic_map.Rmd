@@ -76,7 +76,7 @@ TALmap <- ggplot() +
   coord_sf(ylim=c(33.7576, 33.7715), xlim = c(-85.60915, -85.5952))+
   # coord_sf(ylim=c(39.071, 39.093), xlim = c(-96.595, -96.565))+
   geom_point(data=meta_tab, aes(x=long, y=lat, fill=percentwet_11month, shape=WetDry), size=3.3)+
-   scale_fill_viridis(option="viridis", discrete = FALSE, begin = 1, end = 0.32, labels = scales::percent_format())+
+   scale_fill_viridis(option="viridis", discrete = FALSE, begin = 1, end = 0.2, labels = scales::percent_format())+
   scale_shape_manual(values = c(23,21))+
   geom_point(data=data_subset, aes(x=long, y=lat, color="No STIC data"),
              fill='black', size=3.3, shape=21) +
@@ -93,7 +93,7 @@ TALmap <- ggplot() +
 TALmap
 
 library(ragg)
-plotout <- "TAL_map_01252026.tiff"
+plotout <- "TAL_map_07232026.tiff"
 agg_tiff(filename=plotout, width=2400, height=2000, units="px",
          pointsize=10, res=600, compression="lzw", scaling=0.5)
 TALmap
