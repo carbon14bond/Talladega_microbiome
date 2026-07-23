@@ -33,8 +33,6 @@ This project is composed of three main components:
        - 0.1: Overview (summarizing ASV count data and rarefying for downstream analyses).
        - 0.2: Community Composition (NMDS, dbRDA, variance partitioning, and alpha diversity)
        - 0.3: Analysis of the dominant microbial taxa (GLLVMs)
-  
-This repository is a work in progress and may not yet contain all code or data.
 
 # DATA AVAILABILITY.
 The data used in this study were produced as part of the Aquatic Intermittency Effects in Microbiomes in Streams (AIMS) project. Links to each dataset are provided below. 
